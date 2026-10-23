@@ -1,0 +1,5 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),swap=require('../src/swap-footage.cjs');
+const media=new Map(['a','b','c'].map(id=>[id,{id,fingerprint:id,duration:8}]));
+function fixture(){return {groups:[{id:'A',items:['a','c']},{id:'B',items:['b']}],draft:{hook:[{id:'a'}],body:[{id:'b',groupId:'B',slotIndex:0}],pattern:['B'],assignments:{hook:{id:'song'}}}};}
+test('Swap footage retains slot pattern, music and source state',()=>{const s=fixture(),d=swap(s,media,new Set(),0,0);assert.equal(d.hook[0].id,'b');assert.equal(d.body[0].id,'a');assert.equal(d.body[0].requestedGroupId,'B');assert.equal(d.body[0].groupId,'A');assert.deepEqual(d.assignments,s.draft.assignments);assert.equal(s.draft.hook[0].id,'a');assert.equal(require('../src/body-pattern.cjs').matches(d,s.groups),true);});
+test('Swap rejects used hook, external hook and duplicates',()=>{const s=fixture();assert.throws(()=>swap(s,media,new Set(['a']),0,0),/đã dùng/);s.groups[0].items=[];assert.throws(()=>swap(s,media,new Set(),0,0),/thư viện/);s.groups[0].items=['a'];s.draft.body.push({id:'a',groupId:'A'});assert.throws(()=>swap(s,media,new Set(),0,0),/trùng/);});

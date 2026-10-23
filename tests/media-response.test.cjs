@@ -1,0 +1,6 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');const {mediaResponse}=require('../src/media-response.cjs');
+test('Video streaming trả đúng byte range để tua MP4 lớn, suffix, HEAD và 416',async t=>{const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ccb-range-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));const file=path.join(dir,'clip.mp4');fs.writeFileSync(file,'0123456789');
+ const response=(range,method='GET')=>mediaResponse(file,new Request('https://local/clip',{method,headers:range?{range}:{}}));
+ let r=response('bytes=3-6');assert.equal(r.status,206);assert.equal(r.headers.get('content-range'),'bytes 3-6/10');assert.equal(await r.text(),'3456');
+ r=response('bytes=7-');assert.equal(await r.text(),'789');r=response('bytes=-2');assert.equal(await r.text(),'89');r=response(null);assert.equal(r.headers.get('accept-ranges'),'bytes');assert.equal(await r.text(),'0123456789');r=response('bytes=4-','HEAD');assert.equal(r.headers.get('content-length'),'6');assert.equal(await r.text(),'');for(const range of ['bytes=10-','bytes=7-2','bytes=-0','garbage'])assert.equal(response(range).status,416);
+});

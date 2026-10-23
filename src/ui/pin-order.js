@@ -1,0 +1,1 @@
+(function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.CCBPins=factory();})(this,function(){return {ordered(draft,groups){const pinned=new Set(groups.flatMap(g=>(g.pinned||[]).filter(id=>g.items.includes(id))));return [...new Set([...(draft.pinOrder||[]),...groups.flatMap(g=>g.pinned||[])])].filter(id=>pinned.has(id));}};});
