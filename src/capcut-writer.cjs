@@ -89,12 +89,12 @@ function validate(d){
   }}if(cursor!==d.duration)throw Error('Sai tổng thời lượng.');
   for(const m of [...d.materials.videos,...d.materials.audios])if(!fs.existsSync(m.path))throw Error('Media đã mất: '+m.path);
 }
-async function install(manifest,root,catalog=[],running=isRunning){
+async function install(manifest,root,catalog=[],running=isRunning,preparedDraft=null){
   if(await running())throw Error('CapCut đang mở. Hãy lưu và đóng CapCut, rồi bấm TẠO DỰ ÁN CAPCUT lại.');
   root=path.resolve(root);const indexPath=path.join(root,'root_meta_info.json'),original=fs.readFileSync(indexPath),index=JSON.parse(original.toString('utf8').replace(/^\uFEFF/,''));
   if(!Array.isArray(index.all_draft_store))throw Error('Danh sách dự án CapCut không hợp lệ.');
   if(index.all_draft_store.some(p=>!p.tm_draft_removed&&p.draft_name?.toLocaleLowerCase()===manifest.name.toLocaleLowerCase()))throw Error('Tên dự án đã có trong CapCut. Hãy tự sửa tên.');
-  const d=build(manifest,catalog),projectId=uid(),folder=path.join(root,manifest.name),stage=path.join(root,'.ccb-stage-'+uid());
+  const d=preparedDraft?clone(preparedDraft):build(manifest,catalog),projectId=uid(),folder=path.join(root,manifest.name),stage=path.join(root,'.ccb-stage-'+uid());
   if(fs.existsSync(folder))throw Error('Thư mục dự án đã tồn tại.');
   const now=Date.now()*1000;d.path=slash(folder);
   const materialEntry=(m,type)=>({id:uid(),file_Path:m.path,extra_info:m.material_name||m.name,metetype:type===0?(m.type==='photo'?'photo':'video'):'audio',type,duration:m.duration,width:m.width||0,height:m.height||0,import_time:Math.floor(now/1e6),import_time_ms:now,create_time:Math.floor(now/1e6),roughcut_time_range:{start:0,duration:m.duration},sub_time_range:{start:-1,duration:-1}});

@@ -12,6 +12,8 @@ class Store {
       CREATE INDEX IF NOT EXISTS usage_niche ON usage(niche_id,fingerprint);
       CREATE TABLE IF NOT EXISTS reservations(niche_id TEXT NOT NULL,draft_id TEXT NOT NULL,fingerprint TEXT NOT NULL,PRIMARY KEY(niche_id,draft_id,fingerprint));
       CREATE TABLE IF NOT EXISTS preferences(key TEXT PRIMARY KEY,value TEXT); PRAGMA user_version=1;`);
+    if(file!==':memory:'&&!this.db.prepare("SELECT name FROM sqlite_master WHERE name='channels'").get()&&this.db.prepare('SELECT COUNT(*) AS n FROM niches').get().n){const backup=file+'.before-channels-'+Date.now()+'.sqlite';this.db.exec("VACUUM INTO '"+backup.replaceAll("'","''")+"'");}
+    require('./channels.cjs').schema(this);
     // Backfill existing manifests and archived drafts once; keep USED semantics separate.
     if(!this.pref('reservations-v1')){
       this.db.exec('BEGIN IMMEDIATE');
@@ -27,19 +29,19 @@ class Store {
     for(const fp of fingerprints)if(fp)insert.run(niche,draftId,fp);
   }
   blocked(niche,draftId){return new Set(this.db.prepare('SELECT DISTINCT fingerprint FROM reservations WHERE niche_id=? AND draft_id<>?').all(niche,draftId).map(r=>r.fingerprint));}
-  list(){return this.db.prepare('SELECT id,name FROM niches ORDER BY rowid').all();}
+  list(){return this.db.prepare('SELECT id,name FROM niches WHERE id IN (SELECT root_id FROM channels) ORDER BY rowid').all();}
   deleteNiche(id){
-    const state=this.get(id);this.db.exec('BEGIN IMMEDIATE');
+    const state=this.get(id);id=state.rootNicheId||id;const scopes=require('./channels.cjs').list(this,id).map(c=>c.id);this.db.exec('BEGIN IMMEDIATE');
     try{
       const snapshot={state,deletedAt:new Date().toISOString()};
-      for(const table of ['projects','usage','reservations'])snapshot[table]=this.db.prepare('SELECT * FROM '+table+' WHERE niche_id=?').all(id);
-      this.pref('deleted-niche:'+id,JSON.stringify(snapshot));
-      for(const table of ['usage','reservations','projects'])this.db.prepare('DELETE FROM '+table+' WHERE niche_id=?').run(id);
-      this.db.prepare('DELETE FROM niches WHERE id=?').run(id);this.db.exec('COMMIT');
+      for(const table of ['projects','usage','reservations'])snapshot[table]=scopes.flatMap(scope=>this.db.prepare('SELECT * FROM '+table+' WHERE niche_id=?').all(scope));
+      snapshot.channels=require('./channels.cjs').list(this,id);snapshot.workspaces=scopes.map(scope=>this.db.prepare('SELECT * FROM niches WHERE id=?').get(scope));snapshot.batches=this.db.prepare('SELECT * FROM remix_batches WHERE root_id=?').all(id);this.pref('deleted-niche:'+id,JSON.stringify(snapshot));
+      for(const table of ['usage','reservations','projects'])for(const scope of scopes)this.db.prepare('DELETE FROM '+table+' WHERE niche_id=?').run(scope);
+      for(const scope of scopes)this.db.prepare('DELETE FROM niches WHERE id=?').run(scope);this.db.prepare('DELETE FROM channels WHERE root_id=?').run(id);this.db.prepare('DELETE FROM remix_batches WHERE root_id=?').run(id);this.db.exec('COMMIT');
     }catch(e){this.db.exec('ROLLBACK');throw e;}
   }
   nameDraft(s,exists=()=>false){
-    const base=fixName(s.name).slice(0,85),rows=this.db.prepare('SELECT name,snapshot FROM projects WHERE niche_id=?').all(s.id);
+    const base=fixName(s.channelName&&s.channelName!=='Kênh gốc'?s.channelName:s.name).slice(0,85),rows=this.db.prepare('SELECT name,snapshot FROM projects WHERE niche_id=?').all(s.id);
     let number=Math.max(0,s.projectCounter||0);
     for(const row of rows){const snap=JSON.parse(row.snapshot);number=Math.max(number,snap.draft?.projectNumber||0);if(row.name.startsWith(base+'_')){const n=Number(row.name.slice(base.length+1));if(Number.isSafeInteger(n))number=Math.max(number,n);}}
     const names=new Set(rows.map(r=>r.name.toLocaleLowerCase()));let name;
@@ -47,8 +49,8 @@ class Store {
     s.projectCounter=number;s.draft.projectNumber=number;s.draft.autoName=true;s.draft.name=name;return name;
   }
   create(name){const state={id:uid(),name,parent:'',groups:[],draft:defaults()};this.nameDraft(state);this.save(state);return state;}
-  get(id){const row=this.db.prepare('SELECT state FROM niches WHERE id=?').get(id);if(!row)throw Error('Không tìm thấy ngách.');const s=JSON.parse(row.state);if(/^Dự án mới(?:[ (].*)?$/.test(s.draft.name)){this.nameDraft(s);this.save(s);}if(s.draft.musicVersion!==3||!s.draft.writerVersion||!(s.draft.presetVersion>=3)||!s.draft.blockVersion||!s.draft.shortClipFill||!s.draft.ducking){migratePresets(s.draft);this.save(s);}return s;}
-  save(s){migratePresets(s.draft);this.db.prepare('INSERT INTO niches VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,state=excluded.state').run(s.id,s.name,JSON.stringify(s));}
+  get(id){const row=this.db.prepare('SELECT state FROM niches WHERE id=?').get(id);if(!row)throw Error('Không tìm thấy ngách.');const s=JSON.parse(row.state);if(/^Dự án mới(?:[ (].*)?$/.test(s.draft.name)){this.nameDraft(s);this.save(s);}if(s.draft.musicVersion!==3||!s.draft.writerVersion||!(s.draft.presetVersion>=3)||!s.draft.blockVersion||!s.draft.shortClipFill||!s.draft.ducking){migratePresets(s.draft);this.save(s);}return require('./channels.cjs').decorate(this,s);}
+  save(s){migratePresets(s.draft);require('./channels.cjs').syncLibrary(this,s);this.db.prepare('INSERT INTO niches VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,state=excluded.state').run(s.id,s.name,JSON.stringify(s));}
   cached(file,size,mtime){const row=this.db.prepare('SELECT data FROM media WHERE path=? AND size=? AND mtime=? ORDER BY rowid DESC LIMIT 1').get(file,size,mtime);return row?JSON.parse(row.data):null;}
   putMedia(m){this.db.prepare('INSERT INTO media VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,mtime=excluded.mtime').run(m.id,m.path,m.size,m.mtime,m.fingerprint,JSON.stringify(m));}
   media(id){const r=this.db.prepare('SELECT data FROM media WHERE id=?').get(id);return r?JSON.parse(r.data):null;}

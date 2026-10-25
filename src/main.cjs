@@ -2,6 +2,7 @@ const {app,BrowserWindow,ipcMain,dialog,shell,protocol,net}=require('electron');
 const path=require('node:path');
 const fs=require('node:fs');
 const {Store}=require('./store.cjs');
+const channels=require('./channels.cjs'),remix=require('./remix.cjs'),transfer=require('./remix-transfer.cjs');
 const domain=require('./domain.cjs');
 const {scanTransitions}=require('./transitions.cjs');
 const selection=require('./selection.cjs');
@@ -28,20 +29,51 @@ app.whenReady().then(async()=>{
   let current=store.pref('active')||store.list()[0]?.id;
   if(!current)current=store.create('Ngách đầu tiên').id;
   const hydrate=s=>{const map=store.hydrate(s);for(const [id,m] of map)if(s.sources&&Object.hasOwn(s.sources,id))map.set(id,{...m,source:s.sources[id]});return map;};
-  function view(s){return {effectCatalog:JSON.parse(store.pref('effectCatalog')||'[]'),transitionCatalog:JSON.parse(store.pref('transitionCatalog')||'[]'),state:s,media:[...hydrate(s).values()],used:[...store.blocked(s.id,s.draft.id)],history:store.history(s.id),niches:store.list(),output};}
+  function view(s){s=channels.decorate(store,s);return {channels:channels.list(store,s.id),effectCatalog:JSON.parse(store.pref('effectCatalog')||'[]'),transitionCatalog:JSON.parse(store.pref('transitionCatalog')||'[]'),state:s,media:[...hydrate(s).values()],used:[...store.blocked(s.id,s.draft.id)],history:store.history(s.id),niches:store.list(),output};}
   async function prepareOrder(s){
     const map=hydrate(s),pending=[...map.values()].filter(m=>m.createdAt===undefined);let cursor=0;
     await Promise.all(Array.from({length:Math.min(16,pending.length)},async()=>{while(cursor<pending.length){const m=pending[cursor++];try{m.createdAt=(await fs.promises.stat(m.path)).birthtimeMs;store.putMedia({...store.media(m.id),createdAt:m.createdAt});}catch{m.createdAt=0;}}}));
     for(const g of s.groups)if(!g.orderVersion)selection.sortGroup(g,map);store.save(s);return s;
   }
   const thumbnails=new (require('./thumbnails.cjs').Thumbnails)(path.join(data,'thumbnails'));
+  let pendingRemixImport=null;
   const routes={
+    remixEditOpen:async({id,projectId})=>require('./remix-editor.cjs').open(store,id,projectId),
+    remixEditSave:async(p)=>require('./remix-editor.cjs').mutate(store,p),
+    remixEditCandidates:async({id,projectId,unitId})=>require('./remix-editor.cjs').candidates(store,id,projectId,unitId),
+    remixEditMedia:async({id,projectId,unitId,sourceId,sourceUnitId})=>{
+      const edit=require('./remix-editor.cjs'),{b,p}=edit.load(store,id,projectId);let file;
+      if(sourceId){const sources=await remix.analyzeSources(b.sources);file=sources.find(s=>s.sourceId===sourceId)?.blocks.flatMap(b=>b.units).find(u=>u.id===sourceUnitId)?.path;}
+      else file=edit.locate(p.editor,unitId).u.path;
+      if(!file||!fs.existsSync(file))throw Error('Không tìm thấy footage.');const m=await mediaLib.inspect(file,store),token=domain.uid();previewTokens.set(token,file);return {url:'ccb-media://'+token+'/video',mediaId:m.id,duration:m.duration,thumbnail:await thumbnails.get(m)};
+    },
+    remixEditChoose:async({id,projectId,revision,op})=>{if(!['addHook','ending'].includes(op))throw Error('Thao tác không hợp lệ.');const r=await dialog.showOpenDialog(win,{title:op==='ending'?'Chọn video / ảnh kết thúc':'Thêm video Hook',properties:['openFile'],filters:[{name:'Video / ảnh',extensions:op==='ending'?['mp4','mov','mkv','webm','png','jpg','jpeg','webp']:['mp4','mov','mkv','webm']}]});return r.canceled?null:require('./remix-editor.cjs').mutate(store,{id,projectId,revision,op,path:r.filePaths[0]});},
+    remixEditMusic:async({id,projectId,folders})=>{await remix.assignMusic(store,id,folders,p=>win.webContents.send('scan-progress',p),projectId);return require('./remix-editor.cjs').open(store,id,projectId);},
+    remixEditCheck:async({id,projectId})=>{const {b,p}=require('./remix-editor.cjs').load(store,id,projectId);return remix.check({...b,projects:[p]});},
+    remixEditInstall:async({id,projectId})=>{await remix.install(store,id,adapter,p=>win.webContents.send('scan-progress',p),projectId);return require('./remix-editor.cjs').open(store,id,projectId);},
     scrubFrame:async({id,time})=>require('./scrub-frame.cjs').scrubFrame(store.media(id),time),
     thumbnail:async(id)=>{const m=store.media(id);if(!m)throw Error('Không tìm thấy footage.');return thumbnails.get(m);},
     deleteNiche:async(id)=>{store.deleteNiche(id);current=store.list()[0]?.id||store.create('Ngách mới').id;store.pref('active',current);return view(store.get(current));},
     effects:async()=>{const result=await scanTransitions(undefined,7);store.pref('effectCatalog',JSON.stringify(result.items));return result;},
     transitions:async()=>{const result=await scanTransitions();store.pref('transitionCatalog',JSON.stringify(result.items));return result;},
-    load:async(id)=>{if(id)current=id;store.pref('active',current);return view(await prepareOrder(store.get(current)));},
+    load:async(id)=>{if(id)current=store.pref('channel-active:'+id)||id;store.pref('active',current);return view(await prepareOrder(store.get(current)));},
+    channelCreate:async({id,name})=>{const s=channels.create(store,id,name);current=s.id;store.pref('active',current);store.pref('channel-active:'+s.rootNicheId,current);return view(s);},
+    channelSwitch:async(id)=>{const s=store.get(id);current=id;store.pref('active',id);store.pref('channel-active:'+s.rootNicheId,id);return view(s);},
+    remixList:async(id)=>({batches:remix.list(store,id),sources:remix.sourceProjects(store,id),channels:channels.list(store,id)}),
+    remixSettings:async(id)=>remix.preferences(store,id),
+    remixGet:async(id)=>remix.present(await remix.get(store,id)),
+    remixSaveSource:async(p)=>remix.present(await remix.saveSource(store,p)),
+    remixCreate:async(p)=>remix.present(await remix.create(store,p)),
+    remixReroll:async({id,projectId})=>remix.present(await remix.reroll(store,id,projectId)),
+    remixLock:async({id,projectId})=>remix.present(await remix.lock(store,id,projectId)),
+    remixMusic:async({id,folders})=>remix.present(await remix.assignMusic(store,id,folders,p=>win.webContents.send('scan-progress',p))),
+    remixCheck:async(id)=>remix.check(remix.get(store,id)),
+    remixInstall:async(id)=>remix.present(await remix.install(store,id,adapter,p=>win.webContents.send('scan-progress',p))),
+    remixPreview:async({id,projectId,blockIndex,clipIndex})=>{const b=remix.get(store,id),c=b.projects.find(p=>p.id===projectId)?.blocks[blockIndex]?.clips[clipIndex];if(!c||!fs.existsSync(c.path))throw Error('Không tìm thấy footage.');const token=domain.uid();previewTokens.set(token,c.path);return {url:'ccb-media://'+token+'/video',start:c.sourceStart/1e6,name:c.name,parts:c.parts};},
+    remixRelink:async(id)=>{const r=await dialog.showOpenDialog(win,{title:'Chọn thư mục footage / nhạc để liên kết lại',properties:['openDirectory','multiSelections']});if(r.canceled)return null;const result=await transfer.relink(store,id,r.filePaths,p=>win.webContents.send('scan-progress',p));return {...result,batch:remix.present(result.batch)};},
+    remixExport:async(id)=>{const r=await dialog.showSaveDialog(win,{title:'Xuất gói nhân bản',defaultPath:'Nhan-ban.ccb-remix',filters:[{name:'Gói nhân bản',extensions:['ccb-remix']}]});return r.canceled?null:transfer.exportPackage(store,id,r.filePath);},
+    remixImportPreview:async()=>{const r=await dialog.showOpenDialog(win,{title:'Chọn gói nhân bản',properties:['openFile'],filters:[{name:'Gói nhân bản',extensions:['ccb-remix']}]});if(r.canceled)return null;const pkg=transfer.readPackage(r.filePaths[0]),roots=await dialog.showOpenDialog(win,{title:'Chọn các thư mục chứa footage và nhạc',properties:['openDirectory','multiSelections']});if(roots.canceled)return null;const match=await transfer.matchResources(pkg,roots.filePaths,p=>win.webContents.send('scan-progress',p));pendingRemixImport={pkg,match};return {name:pkg.body.nicheName,projects:pkg.body.batch.projects.length,matched:Object.keys(match.mappings).length,missing:match.missing,duplicates:match.duplicates,errors:match.errors};},
+    remixImportCommit:async()=>{if(!pendingRemixImport)throw Error('Chọn và kiểm tra gói trước.');const result=await transfer.importPackage(store,pendingRemixImport.pkg,pendingRemixImport.match);pendingRemixImport=null;current=result.batch.channelId;store.pref('active',current);return {...result,batch:remix.present(result.batch),view:view(store.get(current))};},
     save:async(s)=>{store.save(s);return true;},
     createNiche:async(name)=>{if(!name?.trim())throw Error('Tên ngách không được rỗng.');const s=store.create(name.trim());const detected=await adapter.detect(s.draft.destination),taken=new Set(detected.existingNames.map(n=>n.toLocaleLowerCase()));const exists=n=>taken.has(n.toLocaleLowerCase())||fs.existsSync(path.join(output,n));if(exists(s.draft.name)){store.nameDraft(s,exists);store.save(s);}current=s.id;store.pref('active',current);return view(s);},
     chooseHooks:async()=>{const r=await dialog.showOpenDialog(win,{title:'Chọn video cho Hook',properties:['openFile','multiSelections'],filters:[{name:'Video',extensions:['mp4','mov','mkv','avi','webm','m4v','mts']}]});return r.canceled?[]:r.filePaths;},
@@ -124,7 +156,7 @@ app.whenReady().then(async()=>{
     preview:async(id)=>{const m=store.media(id);if(!m||!fs.existsSync(m.path))throw Error('File không tồn tại.');previewTokens.clear();const token=domain.uid();previewTokens.set(token,m.path);return {url:'ccb-media://'+token+'/video',name:m.name};},
     previewExternal:async(id)=>{const m=store.media(id);if(!m||!fs.existsSync(m.path))throw Error('File không tồn tại.');const error=await shell.openPath(m.path);if(error)throw Error(error);},
     openOutput:async()=>shell.openPath(store.pref('lastOutput')||output),
-    restore:async({state:s,projectId})=>{const row=store.db.prepare('SELECT snapshot FROM projects WHERE id=? AND niche_id=?').get(projectId,s.id);if(!row)throw Error('Không tìm thấy bản lưu.');store.archiveDraft(s);const snapshot=JSON.parse(row.snapshot);s.draft=snapshot.draft;s.sources={...(s.sources||{}),...(snapshot.sources||{})};store.save(s);return view(s);}
+    restore:async({state:s,projectId})=>{const row=store.db.prepare('SELECT snapshot,status FROM projects WHERE id=? AND niche_id=?').get(projectId,s.id);if(!row)throw Error('Không tìm thấy bản lưu.');if(['IMPORTED','REMIX_CREATED'].includes(row.status))throw Error('Dự án nhập ngoài lưu lịch sử footage. Hãy chỉnh sửa timeline gốc trong CapCut.');store.archiveDraft(s);const snapshot=JSON.parse(row.snapshot);s.draft=snapshot.draft;s.sources={...(s.sources||{}),...(snapshot.sources||{})};store.save(s);return view(s);}
   };
   const trusted=e=>e.sender===win?.webContents&&e.senderFrame?.url.startsWith('file:');
   ipcMain.handle('ccb',async(e,action,payload)=>{if(!trusted(e)||!Object.hasOwn(routes,action))throw Error('Yêu cầu không hợp lệ.');try{return {ok:true,value:await routes[action](payload)};}catch(err){return {ok:false,error:err.message};}});
@@ -137,6 +169,21 @@ app.whenReady().then(async()=>{
   if(smoke){
     try{
       await new Promise(r=>setTimeout(r,1200));
+      if(process.env.CCB_REMIX_EDITOR_TEST==='1'){
+        if(process.env.CCB_SMOKE_COMPACT==='1')win.setSize(1060,740);
+        const result=await win.webContents.executeJavaScript(fs.readFileSync(path.join(base,'tests','remix-editor-ui.js'),'utf8'));
+        fs.writeFileSync(path.join(data,'editor-ui-result.json'),JSON.stringify(result,null,2));
+        fs.writeFileSync(path.join(data,'editor-ui.png'),(await win.webContents.capturePage()).toPNG());
+        if(!result.ok)throw Error(result.error);
+      }
+      if(process.env.CCB_REMIX_UI_TEST==='1'){
+        const result=await win.webContents.executeJavaScript(fs.readFileSync(path.join(base,'tests','remix-ui-smoke.js'),'utf8'));
+        fs.writeFileSync(path.join(data,'remix-ui-result.json'),JSON.stringify(result,null,2));
+        await win.webContents.executeJavaScript("document.querySelector('#showRemix').click()");
+        await win.webContents.executeJavaScript("(async()=>{for(let i=0;i<200&&busy;i++)await new Promise(r=>setTimeout(r,50));window.scrollTo(0,0);await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));})()");fs.writeFileSync(path.join(data,'remix-preview.png'),(await win.webContents.capturePage()).toPNG());
+        if(!result.ok)throw Error(result.error);
+        await win.webContents.executeJavaScript("document.querySelector('#showEditor').click()");
+      }
       if(process.env.CCB_UI_TEST==='1'){
         const uiScript=fs.readFileSync(path.join(base,'tests','ui-smoke.js'),'utf8').replace('__FIXTURE_ROOT__',JSON.stringify(process.env.CCB_FIXTURE_ROOT)).replace('__REAL_PREVIEW__',JSON.stringify(process.env.CCB_REAL_PREVIEW||null));
         const uiResult=await win.webContents.executeJavaScript(uiScript);
