@@ -29,7 +29,7 @@ app.whenReady().then(async()=>{
   let current=store.pref('active')||store.list()[0]?.id;
   if(!current)current=store.create('Ngách đầu tiên').id;
   const hydrate=s=>{const map=store.hydrate(s);for(const [id,m] of map)if(s.sources&&Object.hasOwn(s.sources,id))map.set(id,{...m,source:s.sources[id]});return map;};
-  function view(s){s=channels.decorate(store,s);return {channels:channels.list(store,s.id),effectCatalog:JSON.parse(store.pref('effectCatalog')||'[]'),transitionCatalog:JSON.parse(store.pref('transitionCatalog')||'[]'),state:s,media:[...hydrate(s).values()],used:[...store.blocked(s.id,s.draft.id)],history:store.history(s.id),niches:store.list(),output};}
+  function view(s){return {channels:channels.list(store,s.id),effectCatalog:JSON.parse(store.pref('effectCatalog')||'[]'),transitionCatalog:JSON.parse(store.pref('transitionCatalog')||'[]'),state:s,media:[...hydrate(s).values()],used:[...store.blocked(s.id,s.draft.id)],history:store.history(s.id),niches:store.list(),output};}
   async function prepareOrder(s){
     const map=hydrate(s),pending=[...map.values()].filter(m=>m.createdAt===undefined);let cursor=0;
     await Promise.all(Array.from({length:Math.min(16,pending.length)},async()=>{while(cursor<pending.length){const m=pending[cursor++];try{m.createdAt=(await fs.promises.stat(m.path)).birthtimeMs;store.putMedia({...store.media(m.id),createdAt:m.createdAt});}catch{m.createdAt=0;}}}));
@@ -38,6 +38,7 @@ app.whenReady().then(async()=>{
   const thumbnails=new (require('./thumbnails.cjs').Thumbnails)(path.join(data,'thumbnails'));
   let pendingRemixImport=null;
   const routes={
+    remixDelete:async(p)=>remix.removeBatch(store,p),
     remixEditOpen:async({id,projectId})=>require('./remix-editor.cjs').open(store,id,projectId),
     remixEditSave:async(p)=>require('./remix-editor.cjs').mutate(store,p),
     remixEditCandidates:async({id,projectId,unitId})=>require('./remix-editor.cjs').candidates(store,id,projectId,unitId),
@@ -56,7 +57,7 @@ app.whenReady().then(async()=>{
     deleteNiche:async(id)=>{store.deleteNiche(id);current=store.list()[0]?.id||store.create('Ngách mới').id;store.pref('active',current);return view(store.get(current));},
     effects:async()=>{const result=await scanTransitions(undefined,7);store.pref('effectCatalog',JSON.stringify(result.items));return result;},
     transitions:async()=>{const result=await scanTransitions();store.pref('transitionCatalog',JSON.stringify(result.items));return result;},
-    load:async(id)=>{if(id)current=store.pref('channel-active:'+id)||id;store.pref('active',current);return view(await prepareOrder(store.get(current)));},
+    load:async(id)=>{if(id)current=store.pref('channel-active:'+id)||id;store.pref('active',current);const s=store.get(current);return view(s.groups.some(g=>!g.orderVersion)?await prepareOrder(s):s);},
     channelCreate:async({id,name})=>{const s=channels.create(store,id,name);current=s.id;store.pref('active',current);store.pref('channel-active:'+s.rootNicheId,current);return view(s);},
     channelSwitch:async(id)=>{const s=store.get(id);current=id;store.pref('active',id);store.pref('channel-active:'+s.rootNicheId,id);return view(s);},
     remixList:async(id)=>({batches:remix.list(store,id),sources:remix.sourceProjects(store,id),channels:channels.list(store,id)}),
@@ -170,6 +171,7 @@ app.whenReady().then(async()=>{
     try{
       await new Promise(r=>setTimeout(r,1200));
       if(process.env.CCB_REMIX_EDITOR_TEST==='1'){
+        if(process.env.CCB_SMOKE_WIDE==='1')win.setSize(1920,1080);
         if(process.env.CCB_SMOKE_COMPACT==='1')win.setSize(1060,740);
         const result=await win.webContents.executeJavaScript(fs.readFileSync(path.join(base,'tests','remix-editor-ui.js'),'utf8'));
         fs.writeFileSync(path.join(data,'editor-ui-result.json'),JSON.stringify(result,null,2));

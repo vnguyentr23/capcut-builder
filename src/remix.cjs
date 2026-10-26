@@ -138,4 +138,14 @@ async function install(store,id,adapter,progress=()=>{},projectId=null){
  }
  return b;
 }
-module.exports={present,saveSource,sourcesFromBatch,preferences,list,get,save,sourceProjects,analyzeSources,mix,capture,create,reroll,lock,assignMusic,withMusic,check,install,allSignatures};
+function removeBatch(store,{id,stateId}){
+ const b=get(store,id),s=store.get(stateId),root=s.rootNicheId||s.id;
+ if(b.rootId!==root||b.channelId!==stateId)throw Error('Bộ không thuộc kênh đang chọn.');
+ store.db.exec('BEGIN IMMEDIATE');try{
+  store.pref('deleted-remix:'+id,JSON.stringify({deletedAt:new Date().toISOString(),batch:b}));
+  store.db.prepare('DELETE FROM remix_batches WHERE id=?').run(id);
+  store.db.exec('COMMIT');
+ }catch(e){store.db.exec('ROLLBACK');throw e;}
+ return true;
+}
+module.exports={removeBatch,present,saveSource,sourcesFromBatch,preferences,list,get,save,sourceProjects,analyzeSources,mix,capture,create,reroll,lock,assignMusic,withMusic,check,install,allSignatures};

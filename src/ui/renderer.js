@@ -35,6 +35,7 @@ function render(){
   applyPreviewScale();applyBodyVisibility();window.renderChannels?.();
   $('#niche').innerHTML=niches.map(n=>`<option value="${esc(n.id)}">${esc(n.name)}</option>`).join('');$('#niche').value=state.rootNicheId||state.id;$('#settingsNiche').textContent='Ngách: '+state.name;
   $('#projectName').value=state.draft.name;$('#target').value=state.draft.target;
+  if(document.body.classList.contains('remixMode')){stopFootage();$('#groups').querySelectorAll('.pool').forEach(p=>p._resizeObserver?.disconnect());thumbObserver.disconnect();return;}
   $('#parentPath').textContent=state.parent||'Chọn thư mục cha để lưu theo ngách';$('#parentPath').title=state.parent;
   $('#introFile').textContent=shortPath(state.draft.intro?.path);$('#introFile').title=state.draft.intro?.path||'';
   $('#endFile').textContent=shortPath(state.draft.end?.path);$('#endFile').title=state.draft.end?.path||'';$('#endDurationLabel').hidden=state.draft.end?.kind!=='image';$('#endDuration').value=state.draft.end?.duration||5;
@@ -115,7 +116,7 @@ function renderGroups(){
     const search=$('#search').value.toLowerCase(),unused=$('#unusedOnly').checked;
     const ids=visibleGroupIds(group);
     const rowHeight=156;space.style.height=`${ids.length*rowHeight}px`;pool.scrollTop=scrolls.get(group.id)||0;let start=-1;
-    function paint(force=false){const from=Math.max(0,Math.floor(pool.scrollTop/rowHeight)-2);if(!force&&from===start)return;start=from;space.querySelectorAll('[data-thumb]').forEach(img=>thumbObserver.unobserve(img));space.innerHTML='';
+    function paint(force=false){if(!pool.isConnected||!pool.clientHeight||document.body.classList.contains('remixMode'))return;const from=Math.max(0,Math.floor(pool.scrollTop/rowHeight)-2);if(!force&&from===start)return;start=from;space.querySelectorAll('[data-thumb]').forEach(img=>thumbObserver.unobserve(img));space.innerHTML='';
       if(!ids.length){space.innerHTML='<div class="empty">Chưa có footage phù hợp</div>';return;}
       const visibleRows=Math.ceil(pool.clientHeight/rowHeight)+4;
       for(let i=from;i<Math.min(ids.length,from+visibleRows);i++){
@@ -131,7 +132,7 @@ function renderGroups(){
       }
     }
     pool.onscroll=()=>requestAnimationFrame(()=>paint());paint();
-    const resize=new ResizeObserver(()=>paint(true));resize.observe(pool);pool._resizeObserver=resize;
+    let lastPoolHeight=-1;const resize=new ResizeObserver(()=>{const height=pool.clientHeight;if(height===lastPoolHeight)return;lastPoolHeight=height;paint(true);});resize.observe(pool);pool._resizeObserver=resize;
   }
 }
 async function groupAction(id,action){
@@ -301,7 +302,7 @@ async function showFootage(id,host){document.querySelectorAll('#assignedMusic au
 new MutationObserver(()=>{if(inlineHost&&!inlineHost.isConnected)stopFootage();}).observe(document.body,{childList:true,subtree:true});
 $('#deleteNiche').onclick=async()=>{const id=state.id,name=state.name;const value=await ask('Xóa ngách “'+name+'”?','','Gõ XÓA để bỏ ngách, thiết lập và lịch sử của ngách khỏi tool. File footage và project CapCut trên ổ đĩa được giữ nguyên.');if(value==='XÓA')await run('Xóa ngách…',async()=>{stopFootage();accept(await api('deleteNiche',id));await detect();toast('Đã xóa ngách “'+name+'”.');});};
 
-$('#niche').onchange=async e=>{const id=e.target.value;await run('Chuyển ngách…',async()=>{await save();accept(await api('load',id));await detect();});};
+$('#niche').onchange=async e=>{const id=e.target.value;await run('Chuyển ngách…',async()=>{accept(await api('load',id));if(!$('#remixPanel').hidden)await window.refreshRemixContext?.();});};
 $('#newNiche').onclick=async()=>{const name=await ask('Tạo ngách mới','','Mỗi ngách có thư mục, thiết lập, draft và lịch sử footage riêng.');if(name?.trim())await run('Tạo ngách…',async()=>{accept(await api('createNiche',name));await detect();});};
 $('#renameNiche').onclick=async()=>{const name=await ask('Đổi tên ngách',state.name);if(name?.trim()){state.name=name.trim();niches.find(n=>n.id===state.id).name=state.name;changed();render();}};
 $('#projectName').oninput=e=>{state.draft.name=e.target.value;state.draft.autoName=false;changed();};
