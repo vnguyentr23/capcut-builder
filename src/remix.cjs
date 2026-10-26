@@ -83,7 +83,7 @@ async function generate(store,batch,prefix,onlyId=null){
   const result=e.buildDraft(p,sources,{name}),bodyOriginal=new Set(p.source.blocks.slice(1).flatMap(b=>b.units.map(u=>u.identity))),body=p.blocks.slice(1).flatMap(b=>b.units);
   const blocks=p.blocks.map((b,index)=>{const entries=result.ledger.filter(r=>r.block===index+1);return {index,hook:index===0,start:Math.min(...entries.map(r=>r.newStart)),duration:entries.reduce((n,r)=>n+r.duration,0),clips:b.units.map(u=>({name:u.name,path:u.path,fingerprint:u.identity,sourceStart:u.segments[0].source_timerange?.start||0,duration:u.duration,parts:u.segments.map(s=>({start:(s.source_timerange?.start||0)/1e6,duration:(s.source_timerange?.duration||s.target_timerange.duration)/1e6,speed:s.speed||1,volume:s.volume??1}))}))};});
   if(p.source.ending)blocks.at(-1).duration+=p.source.ending.duration;
-  batch.projects[i]={id:previous?.id||uid(),name,locked:false,draft:result.draft,ledger:result.ledger,signature:p.signature,blocks,assignments:[],sourceName:p.source.name,reusedPercent:Math.round(100*body.filter(u=>bodyOriginal.has(u.identity)).length/Math.max(1,body.length)),installed:null};
+  batch.projects[i]={id:previous?.id||uid(),name,locked:false,draft:result.draft,ledger:result.ledger,signature:p.signature,blocks,assignments:[],sourceName:p.source.name,reusedPercent:Math.round(100*body.filter(u=>bodyOriginal.has(u.identity)).length/Math.max(1,body.length)),installed:null,...(batch.renderSettings?{settings:structuredClone(batch.renderSettings)}:{})};
  }
  return batch;
 }

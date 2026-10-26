@@ -20,4 +20,14 @@ function apply(project,d,s){
  if(s.textEnabled){const texts=new Map((d.materials.texts||[]).map(m=>[m.id,m]));for(const t of d.tracks.filter(t=>t.type==='text'))for(const seg of t.segments){const old=texts.get(seg.material_id);if(!old)continue;let content;try{content=JSON.parse(old.content).text;}catch{throw Error('Không đọc được chữ nguồn.');}if(!content)continue;const m=require('./capcut-writer.cjs').makeText({source:content,path:'credit',text:s.text},seg);Object.assign(old,m,{id:old.id});seg.common_keyframes=(seg.common_keyframes||[]).filter(k=>!/scale|position|alpha/i.test(k.property_type||''));}}
  require('./end-effect.cjs').append(d,require('./end-effect.cjs').timing(s.endEffect,d.duration/1e6),uid);return d;
 }
-module.exports={initial,validate,apply};
+function batchSettings(store,id){const b=require('./remix.cjs').get(store,id);return {settings:b.renderSettings||initial(b.settings),updated:b.updated,count:b.projects.filter(p=>!p.installed).length,installed:b.projects.filter(p=>p.installed).length};}
+function applyBatch(store,{id,settings,updated}){
+ const remix=require('./remix.cjs'),b=remix.get(store,id);if(updated!==b.updated)throw Error('Bộ đã thay đổi. Mở lại thiết lập để áp dụng.');validate(settings);
+ const pending=b.projects.filter(p=>!p.installed);if(!pending.length)throw Error('Không còn bản nháp chưa tạo CapCut.');
+ for(const p of pending){
+  if(p.editor){(p.editUndo??=[]).push({editor:structuredClone(p.editor),name:p.name,assignments:structuredClone(p.assignments),settings:structuredClone(p.settings||initial(b.settings))});p.editUndo=p.editUndo.slice(-5);p.editor.revision++;}
+  p.settings=structuredClone(settings);p.editedAt=new Date().toISOString();
+ }
+ b.renderSettings=structuredClone(settings);remix.save(store,b);return {count:pending.length,skipped:b.projects.length-pending.length};
+}
+module.exports={initial,validate,apply,batchSettings,applyBatch};

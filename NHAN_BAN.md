@@ -59,3 +59,5 @@ Xem trước trong tool dùng âm thanh gốc (hoặc im lặng nếu chọn b�
 
 ## Thiết lập riêng cho bản nhân bản
 Trong màn hình Chỉnh sửa, bấm **Thiết lập** để chỉnh âm lượng và xử lý giọng nhạc, zoom 9:16, kiểu chữ/credit, chuyển cảnh giữa Hook và các block, hiệu ứng kết thúc. Bấm **Áp dụng cho video này** để lưu riêng. Zoom/chữ/chuyển cảnh mặc định giữ nguồn; bật áp dụng mới khi cần. Các thiết lập được ánh xạ khi tạo CapCut; preview footage vẫn dùng video gốc. Nội dung credit và điểm cắt được giữ nguyên. Hiệu ứng kết thúc khớp cuối toàn video, kể cả ảnh/video kết thúc.
+
+Để cài chung cho nhiều video: chọn bộ ở tab Nhân bản, bấm **Thiết lập cả bộ**, rồi **Áp dụng cho cả bộ**. Thiết lập mới thay thế thiết lập riêng của tất cả bản nháp chưa tạo CapCut, giữ nguyên video đã tạo. Có thể sửa riêng từng video sau đó. Trộn lại video trong cùng bộ vẫn kế thừa thiết lập chung.
