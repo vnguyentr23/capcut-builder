@@ -116,4 +116,4 @@ async function install(manifest,root,catalog=[],running=isRunning,preparedDraft=
     if(path.dirname(stage)===root&&path.basename(stage).startsWith('.ccb-stage-'))fs.rmSync(stage,{recursive:true,force:true});
   }
 }
-module.exports={build,validate,install,isRunning,resolveTransition,fontFile};
+module.exports={makeText,build,validate,install,isRunning,resolveTransition,fontFile};

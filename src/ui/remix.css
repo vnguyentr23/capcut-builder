@@ -30,3 +30,5 @@ body.remixDraftMode main{grid-template-rows:minmax(0,1fr)}
 .rxThumb>img:not([src]){visibility:hidden}
 #rxBlocks{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,650px),1fr));grid-auto-rows:max-content;align-content:start;align-items:start;gap:10px}#rxBlocks>.rxBlock{margin-bottom:0;min-height:min-content;height:auto}.rxCard{flex:0 0 148px;min-height:168px}
 .remixDraftMode #toggleSettings{display:none}
+
+#rxSettingsDialog{width:min(620px,94vw);max-height:88vh;overflow:auto}#rxSettingsDialog details{margin:10px 0;padding:10px}#rxSettingsDialog .rxFields{margin:12px 0}#rxSettingsDialog select{width:100%;margin:6px 0}#rxSettingsError{color:#e9b68e;font-size:12px}

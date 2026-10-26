@@ -170,6 +170,12 @@ app.whenReady().then(async()=>{
   if(smoke){
     try{
       await new Promise(r=>setTimeout(r,1200));
+      if(process.env.CCB_REMIX_SETTINGS_TEST==='1'){
+        const result=await win.webContents.executeJavaScript(fs.readFileSync(path.join(base,'tests','remix-settings-ui.js'),'utf8'));
+        fs.writeFileSync(path.join(data,'settings-ui.json'),JSON.stringify(result,null,2));
+        fs.writeFileSync(path.join(data,'settings-ui.png'),(await win.webContents.capturePage()).toPNG());
+        if(!result.ok)throw Error(result.error);
+      }
       if(process.env.CCB_REMIX_EDITOR_TEST==='1'){
         if(process.env.CCB_SMOKE_WIDE==='1')win.setSize(1920,1080);
         if(process.env.CCB_SMOKE_COMPACT==='1')win.setSize(1060,740);

@@ -104,22 +104,24 @@ async function assignMusic(store,id,folders,progress=()=>{},projectId=null){
  b.musicFolders=folders;store.pref('remix-settings:'+b.channelId,JSON.stringify({...preferences(store,b.channelId),folders}));return save(store,b);
 }
 function withMusic(project,settings){
+ settings=project.settings||settings;
  const d=structuredClone(project.draft),t=require('./capcut-template.json'),track={...structuredClone(t.audioTrack),id:uid(),name:'Nhạc nhân bản',type:'audio',segments:[]};d.materials.audios=[];d.materials.audio_fades=[];
  for(const a of project.assignments){const m={...structuredClone(t.audioMaterial),id:uid(),unique_id:uid(),path:a.path,name:a.name,type:'extract_music',duration:Math.round(a.sourceDuration*1e6)};d.materials.audios.push(m);const fade={id:uid(),type:'audio_fade',fade_type:0,fade_in_duration:0,fade_out_duration:Math.min(4e6,a.duration)};d.materials.audio_fades.push(fade);const volume=10**((settings.audioVolumeDb??-10)/20),s={...structuredClone(t.audioSegment),id:uid(),material_id:m.id,source_timerange:{start:0,duration:a.duration},target_timerange:{start:a.start,duration:a.duration},volume,last_nonzero_volume:volume,extra_material_refs:[fade.id]};
   if(['removeVocals','keepVocals'].includes(settings.musicAudioMode)){const v={id:uid(),type:'vocal_separation',choice:settings.musicAudioMode==='keepVocals'?2:1,removed_sounds:[],time_range:{start:0,duration:a.duration},production_path:'',final_algorithm:'vocal_separate',enter_from:'timeline_menu'};(d.materials.vocal_separations||=[]).push(v);s.extra_material_refs.push(v.id);}track.segments.push(s);
  }
  if(track.segments.length)d.tracks.push(track);
+ if(project.settings)require('./remix-settings.cjs').apply(project,d,project.settings);
  return d;
 }
 function check(batch){
  const missing=new Set(),issues=[];if(!batch.projects.length)issues.push('Bộ nguồn chưa có bản nhân bản.');
- for(const p of batch.projects){if(p.installed)continue;for(const m of p.draft.materials.videos||[])if(m.path&&(!fs.existsSync(m.path)||(batch.transferIssues||[]).some(i=>norm(i.path)===norm(m.path))))missing.add(m.path);for(const a of p.assignments)if(!fs.existsSync(a.path))missing.add(a.path);
+ for(const p of batch.projects){if(p.installed)continue;if(p.settings)try{require('./remix-settings.cjs').validate(p.settings);}catch(e){issues.push(p.name+': '+e.message);}for(const m of p.draft.materials.videos||[])if(m.path&&(!fs.existsSync(m.path)||(batch.transferIssues||[]).some(i=>norm(i.path)===norm(m.path))))missing.add(m.path);for(const a of p.assignments)if(!fs.existsSync(a.path))missing.add(a.path);
   if(p.blocks.some(b=>b.clips.some(c=>!/^([a-f0-9]{64})$/i.test(c.fingerprint||''))))issues.push(p.name+': footage chưa có dấu vân tay. Khôi phục file nguồn rồi trộn lại.');
   if(nameErrors(p.name).length)issues.push(p.name+': tên không hợp lệ.');
   if(p.assignments.length!==p.blocks.filter(b=>!b.hook||b.duration>3e6).length)issues.push(p.name+': chưa gán đủ nhạc.');
   if(new Set(p.assignments.map(a=>a.fingerprint)).size!==p.assignments.length)issues.push(p.name+': nhạc bị trùng.');
   for(const a of p.assignments)if(a.duration>Math.round(a.sourceDuration*1e6))issues.push(p.name+': bài nhạc ngắn hơn block.');
-  for(const m of p.draft.materials.transitions||[])if(m.path&&!fs.existsSync(path.join(m.path,'config.json')))issues.push(p.name+': thiếu chuyển cảnh '+(m.name||m.effect_id));
+  for(const m of (!p.settings||p.settings.transition.type==='inherit'?p.draft.materials.transitions||[]:[]))if(m.path&&!fs.existsSync(path.join(m.path,'config.json')))issues.push(p.name+': thiếu chuyển cảnh '+(m.name||m.effect_id));
  }
  return {ok:!missing.size&&!issues.length,missing:[...missing],issues};
 }

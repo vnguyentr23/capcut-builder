@@ -56,3 +56,6 @@ Nhân bản và chỉnh sửa chỉ lưu trong tool; chỉ nút **TẠO DỰ ÁN
 
 Xem trước trong tool dùng âm thanh gốc (hoặc im lặng nếu chọn bỏ tiếng). Giữ/tách lời là thiết lập truyền sang CapCut để xử lý, không phải âm thanh đã lọc trong preview. Đoạn có keyframe hoặc tốc độ cong được giữ nguyên khoảng cắt để tránh làm hỏng chỉnh sửa phức tạp; vẫn có thể đổi âm thanh.
 
+
+## Thiết lập riêng cho bản nhân bản
+Trong màn hình Chỉnh sửa, bấm **Thiết lập** để chỉnh âm lượng và xử lý giọng nhạc, zoom 9:16, kiểu chữ/credit, chuyển cảnh giữa Hook và các block, hiệu ứng kết thúc. Bấm **Áp dụng cho video này** để lưu riêng. Zoom/chữ/chuyển cảnh mặc định giữ nguồn; bật áp dụng mới khi cần. Các thiết lập được ánh xạ khi tạo CapCut; preview footage vẫn dùng video gốc. Nội dung credit và điểm cắt được giữ nguyên. Hiệu ứng kết thúc khớp cuối toàn video, kể cả ảnh/video kết thúc.
