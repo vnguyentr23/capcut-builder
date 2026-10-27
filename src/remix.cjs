@@ -103,16 +103,27 @@ async function assignMusic(store,id,folders,progress=()=>{},projectId=null){
  }
  b.musicFolders=folders;store.pref('remix-settings:'+b.channelId,JSON.stringify({...preferences(store,b.channelId),folders}));return save(store,b);
 }
-function withMusic(project,settings){
+function withMusic(project,settings,audioPieces=null){
  settings=require('./remix-settings.cjs').effective(project,settings);
  const d=structuredClone(project.draft),t=require('./capcut-template.json'),track={...structuredClone(t.audioTrack),id:uid(),name:'Nhạc nhân bản',type:'audio',segments:[]};d.materials.audios??=[];d.materials.audio_fades??=[];
- for(const a of project.assignments){const m={...structuredClone(t.audioMaterial),id:uid(),unique_id:uid(),path:a.path,name:a.name,type:'extract_music',duration:Math.round(a.sourceDuration*1e6)};d.materials.audios.push(m);const fade={id:uid(),type:'audio_fade',fade_type:0,fade_in_duration:0,fade_out_duration:Math.min(4e6,a.duration)};d.materials.audio_fades.push(fade);const volume=10**((settings.audioVolumeDb??-10)/20),s={...structuredClone(t.audioSegment),id:uid(),material_id:m.id,source_timerange:{start:0,duration:a.duration},target_timerange:{start:a.start,duration:a.duration},volume,last_nonzero_volume:volume,extra_material_refs:[fade.id]};
-  if(['removeVocals','keepVocals'].includes(settings.musicAudioMode)){const v={id:uid(),type:'vocal_separation',choice:settings.musicAudioMode==='keepVocals'?2:1,removed_sounds:[],time_range:{start:0,duration:a.duration},production_path:'',final_algorithm:'vocal_separate',enter_from:'timeline_menu'};(d.materials.vocal_separations||=[]).push(v);s.extra_material_refs.push(v.id);}track.segments.push(s);
+ for(const a of audioPieces||project.assignments){const m={...structuredClone(t.audioMaterial),id:uid(),unique_id:uid(),path:a.path,name:a.name,type:'extract_music',duration:Math.round(a.sourceDuration*1e6)};d.materials.audios.push(m);const fade={id:uid(),type:'audio_fade',fade_type:0,fade_in_duration:0,fade_out_duration:Math.min(a.fadeOut??4e6,a.duration)};d.materials.audio_fades.push(fade);const volume=a.volume??10**((settings.audioVolumeDb??-10)/20),s={...structuredClone(t.audioSegment),id:uid(),material_id:m.id,source_timerange:{start:a.sourceStart||0,duration:a.duration},target_timerange:{start:a.start,duration:a.duration},volume,last_nonzero_volume:volume,extra_material_refs:[fade.id]};
+  if(['removeVocals','keepVocals'].includes(settings.musicAudioMode)){const v={id:uid(),type:'vocal_separation',choice:settings.musicAudioMode==='keepVocals'?2:1,removed_sounds:[],time_range:{start:a.sourceStart||0,duration:a.duration},production_path:'',final_algorithm:'vocal_separate',enter_from:'timeline_menu'};(d.materials.vocal_separations||=[]).push(v);s.extra_material_refs.push(v.id);}track.segments.push(s);
  }
  if(track.segments.length)d.tracks.push(track);
+ const textTracks=d.tracks.filter(t=>t.type==='text');if(textTracks.length){const merged={...textTracks[0],name:'Credit',segments:textTracks.flatMap(t=>t.segments).sort((a,b)=>a.target_timerange.start-b.target_timerange.start)};d.tracks=d.tracks.flatMap(t=>t.type!=='text'?[t]:t===textTracks[0]?[merged]:[]);}
+
  for(const m of d.materials.transitions||[])Object.assign(m,require('./transitions.cjs').resolveEffect(m));
  require('./remix-settings.cjs').apply(project,d,settings);
  return d;
+}
+async function prepare(project,base,options={}){
+ const settings=require('./remix-settings.cjs').effective(project,base),duck=require('./ducking.cjs');
+ if(!duck.validate(settings).enabled)return withMusic(project,settings);
+ const materials=new Map((project.draft.materials.videos||[]).map(m=>[m.id,m]));
+ const clips=project.draft.tracks.filter(t=>t.type==='video').flatMap(t=>t.segments.map(seg=>{const m=materials.get(seg.material_id),v=(project.draft.materials.vocal_separations||[]).find(v=>seg.extra_material_refs.includes(v.id));return {path:m.path,kind:m.type==='photo'?'image':'video',hasAudio:m.has_audio,start:seg.target_timerange.start/1e6,duration:seg.target_timerange.duration/1e6,sourceStart:(seg.source_timerange?.start||0)/1e6,sourceDuration:(seg.source_timerange?.duration||seg.target_timerange.duration)/1e6,audioMode:seg.volume===0?'mute':v?.choice===1?'removeVocals':v?.choice===2?'keepVocals':'original'};}));
+ const manifest={draft:settings,clips,audio:project.assignments.map(a=>({...a,key:String(a.block),start:a.start/1e6,duration:a.duration/1e6,sourceStart:0,volumeDb:settings.audioVolumeDb,volume:10**(settings.audioVolumeDb/20),fadeOut:Math.min(4,a.duration/1e6)}))};
+ await duck.apply(manifest,{...options,analyze:options.analyze||(c=>duck.levels({...c,duration:c.sourceDuration}))});
+ return withMusic(project,settings,manifest.audio.map(a=>({...a,start:Math.round(a.start*1e6),duration:Math.round((a.start+a.duration)*1e6)-Math.round(a.start*1e6),sourceStart:Math.round(a.sourceStart*1e6),fadeOut:Math.round(a.fadeOut*1e6)})));
 }
 function check(batch){
  const missing=new Set(),issues=[];if(!batch.projects.length)issues.push('Bộ nguồn chưa có bản nhân bản.');
@@ -132,7 +143,7 @@ async function install(store,id,adapter,progress=()=>{},projectId=null){
  const writer=require('./capcut-writer.cjs');if(await writer.isRunning())throw Error('Lưu và đóng CapCut trước khi tạo bộ dự án.');
  const names=new Set(detected.existingNames.map(n=>n.toLowerCase()));for(const p of selected.filter(p=>!p.installed))if(names.has(p.name.toLowerCase()))throw Error('Tên đã tồn tại trong CapCut: '+p.name);
  for(const [index,p] of selected.entries())if(!p.installed){
-  const draft=withMusic(p,b.renderSettings||b.settings);writer.validate(draft);
+  const draft=await prepare(p,b.renderSettings||b.settings,{progress});writer.validate(draft);
   const manifest={name:p.name,remixBatchId:b.id,draft:{...defaults(),name:p.name},clips:p.blocks.flatMap(bl=>bl.clips.map(c=>({...c,role:bl.hook?'hook':'body'})))};
   const result=await writer.install(manifest,detected.destination,[],writer.isRunning,draft);
   p.installed=result.path;p.locked=true;
@@ -151,4 +162,4 @@ function removeBatch(store,{id,stateId}){
  }catch(e){store.db.exec('ROLLBACK');throw e;}
  return true;
 }
-module.exports={removeBatch,present,saveSource,sourcesFromBatch,preferences,list,get,save,sourceProjects,analyzeSources,mix,capture,create,reroll,lock,assignMusic,withMusic,check,install,allSignatures};
+module.exports={prepare,removeBatch,present,saveSource,sourcesFromBatch,preferences,list,get,save,sourceProjects,analyzeSources,mix,capture,create,reroll,lock,assignMusic,withMusic,check,install,allSignatures};

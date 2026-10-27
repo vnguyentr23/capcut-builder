@@ -64,3 +64,7 @@ Trong màn hình Chỉnh sửa, bấm **Thiết lập** để chỉnh âm lượ
 
 ### Chỉnh từng block
 Trong màn hình Chỉnh sửa, dùng ↑ / ↓ để đổi thứ tự block Body, × để xóa block (giữ ít nhất một block Body). Hook luôn ở đầu. Nhạc đi theo block, thời gian được tính lại; nếu bài không đủ dài sau thay đổi, cần gán lại. Dùng ↻ Nhạc để đổi riêng một bài hoặc ♫ Chọn bài để chọn file âm thanh. Không trùng bài trong video và bài phải đủ dài. Hoàn tác khôi phục block cùng nhạc.
+
+Credit được gom vào một track khi tạo CapCut. Trong Thiết lập cả bộ hoặc Thiết lập video, mục Hạ nhạc theo footage dùng cùng quy tắc phân tích tiếng gốc như Dựng video; giữ nhạc liên tục và fade cuối bài. Cần ffmpeg trên máy tạo dự án.
+
+Trên máy mới, chạy `Tao shortcut.cmd` trong thư mục cài tool để tạo shortcut Desktop đúng đường dẫn và logo. Nếu di chuyển thư mục cài, chạy lại file này.
