@@ -105,7 +105,7 @@ async function assignMusic(store,id,folders,progress=()=>{},projectId=null){
 }
 function withMusic(project,settings){
  settings=project.settings||require('./remix-settings.cjs').initial(settings);
- const d=structuredClone(project.draft),t=require('./capcut-template.json'),track={...structuredClone(t.audioTrack),id:uid(),name:'Nhạc nhân bản',type:'audio',segments:[]};d.materials.audios=[];d.materials.audio_fades=[];
+ const d=structuredClone(project.draft),t=require('./capcut-template.json'),track={...structuredClone(t.audioTrack),id:uid(),name:'Nhạc nhân bản',type:'audio',segments:[]};d.materials.audios??=[];d.materials.audio_fades??=[];
  for(const a of project.assignments){const m={...structuredClone(t.audioMaterial),id:uid(),unique_id:uid(),path:a.path,name:a.name,type:'extract_music',duration:Math.round(a.sourceDuration*1e6)};d.materials.audios.push(m);const fade={id:uid(),type:'audio_fade',fade_type:0,fade_in_duration:0,fade_out_duration:Math.min(4e6,a.duration)};d.materials.audio_fades.push(fade);const volume=10**((settings.audioVolumeDb??-10)/20),s={...structuredClone(t.audioSegment),id:uid(),material_id:m.id,source_timerange:{start:0,duration:a.duration},target_timerange:{start:a.start,duration:a.duration},volume,last_nonzero_volume:volume,extra_material_refs:[fade.id]};
   if(['removeVocals','keepVocals'].includes(settings.musicAudioMode)){const v={id:uid(),type:'vocal_separation',choice:settings.musicAudioMode==='keepVocals'?2:1,removed_sounds:[],time_range:{start:0,duration:a.duration},production_path:'',final_algorithm:'vocal_separate',enter_from:'timeline_menu'};(d.materials.vocal_separations||=[]).push(v);s.extra_material_refs.push(v.id);}track.segments.push(s);
  }
