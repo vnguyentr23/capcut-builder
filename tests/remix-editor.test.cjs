@@ -21,3 +21,20 @@ test('Create CapCut for selected draft only, retain native audio refs and leave 
   const d=JSON.parse(fs.readFileSync(path.join(result.projects[0].installed,'draft_content.json')));const video=d.tracks.find(t=>t.type==='video');assert.deepEqual(video.segments[0].source_timerange,p.draft.tracks[0].segments[0].source_timerange);assert(d.materials.vocal_separations.some(m=>m.choice===2));
  }finally{writer.isRunning=running;store.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('Block moves and deletion keep songs attached, retime output and undo restores all',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ccb-block-')),store=new Store(path.join(dir,'db.sqlite'));
+ try{const state=store.create('Blocks'),p=fixture();p.assignments=p.blocks.map((b,i)=>({block:i,name:'song'+i,sourceDuration:100,start:b.start,duration:b.duration}));const b={id:uid(),rootId:state.id,channelId:state.id,name:'B',sources:[],projects:[p],settings:defaults()};remix.save(store,b);
+ let shown=edit.open(store,b.id,p.id);const ids=shown.blocks.map(b=>b.id),run=async(op,args={})=>shown=await edit.mutate(store,{id:b.id,projectId:p.id,revision:shown.revision,op,...args});
+ await run('moveBlock',{blockId:ids[2],direction:-1});assert.deepEqual(shown.blocks.map(b=>b.id),[ids[0],ids[2],ids[1]]);assert.equal(shown.assignments.find(a=>a.name==='song2').block,1);assert.equal(shown.assignments.find(a=>a.name==='song2').start,12e6);
+ await run('removeBlock',{blockId:ids[2]});assert.equal(shown.duration,24);assert.equal(shown.assignments.length,2);assert.equal(shown.assignments.find(a=>a.name==='song1').block,1);await assert.rejects(run('removeBlock',{blockId:ids[1]}),/ít nhất/);await run('undo');assert.equal(shown.blocks.length,3);assert.equal(shown.assignments.length,3);await assert.rejects(run('moveBlock',{blockId:ids[0],direction:1}),/Body/);
+ }finally{store.close();fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('Replace block music only changes selected block and validates uniqueness and duration',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ccb-song-')),store=new Store(path.join(dir,'db.sqlite')),media=require('../src/media.cjs'),inspect=media.inspect,scan=media.scan;
+ try{const state=store.create('Songs'),p=fixture();p.assignments=[{block:1,name:'keep',fingerprint:'used',sourceDuration:100,start:12e6,duration:12e6}];const b={id:uid(),rootId:state.id,channelId:state.id,name:'B',sources:[],projects:[p],settings:defaults()};remix.save(store,b);let shown=edit.open(store,b.id,p.id);const run=async(args)=>shown=await edit.mutate(store,{id:b.id,projectId:p.id,revision:shown.revision,op:'blockMusic',blockId:shown.blocks[2].id,...args});
+ media.inspect=async()=>({name:'new',path:'new.mp3',duration:100,fingerprint:'fresh'});await run({path:'new.mp3'});assert.equal(shown.assignments[0].name,'keep');assert.equal(shown.assignments[1].duration,12e6);
+ media.inspect=async()=>({name:'dup',duration:100,fingerprint:'used'});await assert.rejects(run({path:'dup.mp3'}),/đã được dùng/);media.inspect=async()=>({duration:1,fingerprint:'short'});await assert.rejects(run({path:'short.mp3'}),/ngắn hơn/);
+ media.scan=async()=>[{name:'random',path:'random.mp3',duration:100,fingerprint:'random'}];await run({folder:'music'});assert.equal(shown.assignments[1].name,'random');assert.equal(shown.assignments[0].name,'keep');
+ }finally{media.inspect=inspect;media.scan=scan;store.close();fs.rmSync(dir,{recursive:true,force:true});}
+});

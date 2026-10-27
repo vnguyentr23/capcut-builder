@@ -78,6 +78,23 @@ async function mutate(store,args){
  else {
   (p.editUndo??=[]).push({editor:clone(e),name:p.name,assignments:clone(p.assignments),settings:clone(p.settings)});p.editUndo=p.editUndo.slice(-5);
   if(op==='settings'){p.settings=require('./remix-settings.cjs').validate(clone(args.settings));}
+  else if(op==='moveBlock'||op==='removeBlock'){
+   const index=e.blocks.findIndex(x=>x.id===args.blockId);
+   if(index<=0)throw Error('Chỉ di chuyển hoặc xóa block Body.');
+   const oldIds=e.blocks.map(x=>x.id);
+   if(op==='removeBlock'){if(e.blocks.length<=2)throw Error('Cần giữ ít nhất một block Body.');e.blocks.splice(index,1);}
+   else{const target=index+args.direction;if(![-1,1].includes(args.direction)||target<1||target>=e.blocks.length)throw Error('Vị trí block không hợp lệ.');[e.blocks[index],e.blocks[target]]=[e.blocks[target],e.blocks[index]];}
+   p.assignments=p.assignments.flatMap(a=>{const block=e.blocks.findIndex(x=>x.id===oldIds[a.block]);return block<0?[]:[{...a,block}];});
+  }
+  else if(op==='blockMusic'){
+   const index=e.blocks.findIndex(x=>x.id===args.blockId),block=p.blocks[index];if(!block)throw Error('Block không tồn tại.');
+   const duration=block.duration-(index===0?Math.min(3e6,block.duration):0);if(duration<=0)throw Error('Hook quá ngắn để thêm nhạc sau 3 giây.');
+   const media=require('./media.cjs'),old=p.assignments.find(a=>a.block===index),used=new Set(p.assignments.filter(a=>a.block!==index).map(a=>a.fingerprint));let song;
+   if(args.path){song=await media.inspect(args.path,store);if(!['.mp3','.wav','.m4a','.aac','.flac','.ogg','.wma'].includes(path.extname(args.path).toLowerCase()))throw Error('Hãy chọn file âm thanh.');}
+   else{const folder=args.folder||b.musicFolders?.[index===0?'hook':'body'];if(!folder)throw Error('Chọn thư mục nhạc trước.');const pool=(await media.scan(folder,'audio',store)).filter(m=>!m.error&&Math.round(m.duration*1e6)>=duration&&!used.has(m.fingerprint)&&m.fingerprint!==old?.fingerprint);if(!pool.length)throw Error('Không có bài khác đủ dài và chưa dùng trong video.');song=pool[crypto.randomInt(pool.length)];}
+   if(song.error||!song.duration||Math.round(song.duration*1e6)<duration)throw Error('Bài nhạc ngắn hơn block hoặc không đọc được.');if(used.has(song.fingerprint))throw Error('Bài nhạc đã được dùng trong video.');
+   p.assignments=p.assignments.filter(a=>a.block!==index);p.assignments.push({block:index,path:song.path,name:song.name,fingerprint:song.fingerprint,sourceDuration:song.duration,start:block.start+(index===0?3e6:0),duration});p.assignments.sort((a,z)=>a.block-z.block);
+  }
   else if(op==='name'){if(nameErrors(args.name).length)throw Error(nameErrors(args.name).join(' '));if(b.projects.some(q=>q.id!==p.id&&q.name.toLowerCase()===args.name.toLowerCase()))throw Error('Tên trùng bản khác trong bộ.');p.name=args.name;}
   else if(op==='parts')setParts(locate(e,args.unitId).u,args.parts);
   else if(op==='endingDuration'){if(!e.ending||summary(e.ending).kind!=='image'||!Number.isFinite(args.duration)||args.duration<.1||args.duration>86400)throw Error('Thời lượng ảnh không hợp lệ.');const n=Math.round(args.duration*1e6);e.ending.segments[0].target_timerange={start:0,duration:n};e.ending.segments[0].source_timerange={start:0,duration:n};e.ending.materials.videos[0].duration=n;}
