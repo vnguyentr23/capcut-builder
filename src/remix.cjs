@@ -104,13 +104,13 @@ async function assignMusic(store,id,folders,progress=()=>{},projectId=null){
  b.musicFolders=folders;store.pref('remix-settings:'+b.channelId,JSON.stringify({...preferences(store,b.channelId),folders}));return save(store,b);
 }
 function withMusic(project,settings){
- settings=project.settings||settings;
+ settings=project.settings||require('./remix-settings.cjs').initial(settings);
  const d=structuredClone(project.draft),t=require('./capcut-template.json'),track={...structuredClone(t.audioTrack),id:uid(),name:'Nhạc nhân bản',type:'audio',segments:[]};d.materials.audios=[];d.materials.audio_fades=[];
  for(const a of project.assignments){const m={...structuredClone(t.audioMaterial),id:uid(),unique_id:uid(),path:a.path,name:a.name,type:'extract_music',duration:Math.round(a.sourceDuration*1e6)};d.materials.audios.push(m);const fade={id:uid(),type:'audio_fade',fade_type:0,fade_in_duration:0,fade_out_duration:Math.min(4e6,a.duration)};d.materials.audio_fades.push(fade);const volume=10**((settings.audioVolumeDb??-10)/20),s={...structuredClone(t.audioSegment),id:uid(),material_id:m.id,source_timerange:{start:0,duration:a.duration},target_timerange:{start:a.start,duration:a.duration},volume,last_nonzero_volume:volume,extra_material_refs:[fade.id]};
   if(['removeVocals','keepVocals'].includes(settings.musicAudioMode)){const v={id:uid(),type:'vocal_separation',choice:settings.musicAudioMode==='keepVocals'?2:1,removed_sounds:[],time_range:{start:0,duration:a.duration},production_path:'',final_algorithm:'vocal_separate',enter_from:'timeline_menu'};(d.materials.vocal_separations||=[]).push(v);s.extra_material_refs.push(v.id);}track.segments.push(s);
  }
  if(track.segments.length)d.tracks.push(track);
- if(project.settings)require('./remix-settings.cjs').apply(project,d,project.settings);
+ require('./remix-settings.cjs').apply(project,d,settings);
  return d;
 }
 function check(batch){
@@ -131,7 +131,7 @@ async function install(store,id,adapter,progress=()=>{},projectId=null){
  const writer=require('./capcut-writer.cjs');if(await writer.isRunning())throw Error('Lưu và đóng CapCut trước khi tạo bộ dự án.');
  const names=new Set(detected.existingNames.map(n=>n.toLowerCase()));for(const p of selected.filter(p=>!p.installed))if(names.has(p.name.toLowerCase()))throw Error('Tên đã tồn tại trong CapCut: '+p.name);
  for(const [index,p] of selected.entries())if(!p.installed){
-  const draft=withMusic(p,b.settings);writer.validate(draft);
+  const draft=withMusic(p,b.renderSettings||b.settings);writer.validate(draft);
   const manifest={name:p.name,remixBatchId:b.id,draft:{...defaults(),name:p.name},clips:p.blocks.flatMap(bl=>bl.clips.map(c=>({...c,role:bl.hook?'hook':'body'})))};
   const result=await writer.install(manifest,detected.destination,[],writer.isRunning,draft);
   p.installed=result.path;p.locked=true;

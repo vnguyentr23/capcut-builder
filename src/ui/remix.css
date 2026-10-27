@@ -34,3 +34,5 @@ body.remixDraftMode main{grid-template-rows:minmax(0,1fr)}
 #rxSettingsDialog{width:min(620px,94vw);max-height:88vh;overflow:auto}#rxSettingsDialog details{margin:10px 0;padding:10px}#rxSettingsDialog .rxFields{margin:12px 0}#rxSettingsDialog select{width:100%;margin:6px 0}#rxSettingsError{color:#e9b68e;font-size:12px}
 
 .rxBlockMusic{display:flex;align-items:center;gap:6px;margin-top:8px;min-width:0}.rxBlockMusic small{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rxBlockMusic button{flex-shrink:0}
+
+.rxBlockMusic{flex-wrap:wrap}.rxBlockMusic audio{width:100%;height:32px}

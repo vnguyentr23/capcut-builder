@@ -11,3 +11,6 @@ test('Batch settings persist for pending drafts only; stale update rejected and 
  const result=settings.applyBatch(store,{id:batch.id,updated:info.updated,settings:value});assert.deepEqual(result,{count:1,skipped:1});const saved=remix.get(store,batch.id);assert.equal(saved.projects[0].settings.audioVolumeDb,-22);assert.equal(JSON.stringify(saved.projects[1]),old);assert.deepEqual(saved.sources,batch.sources);assert.equal(saved.renderSettings.audioVolumeDb,-22);
  }finally{store.close();}
 });
+
+test('Draft without individual settings respects new transition settings instead of source',()=>{const p=fixture();const d=remix.withMusic(p,{transition:{type:'none',duration:.35}});assert.equal(d.materials.transitions.length,0);assert(!d.tracks[0].segments[0].extra_material_refs.includes('tr'));assert.equal(p.draft.materials.transitions.length,1);});
+test('Initial settings retain downloaded transition selection',()=>{const resource={effectId:'new',effectType:19,path:'download'};const s=settings.initial({transition:{type:'local',duration:.75,resource}});assert.equal(s.transition.type,'local');assert.deepEqual(s.transition.resource,resource);assert.equal(s.transition.duration,.75);});

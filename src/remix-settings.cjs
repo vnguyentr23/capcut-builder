@@ -1,6 +1,6 @@
 const fs=require('node:fs'),path=require('node:path');
 const {defaults,uid}=require('./domain.cjs');
-function initial(base={}){const d=defaults();return {audioVolumeDb:base.audioVolumeDb??d.audioVolumeDb,musicAudioMode:base.musicAudioMode??d.musicAudioMode,zoomEnabled:false,vertical:{...d.vertical,...base.vertical},textEnabled:false,text:{...d.text,...base.text},transition:{type:'inherit',duration:base.transition?.duration??.35,resource:null},endEffect:{enabled:false,duration:3,resource:null}};}
+function initial(base={}){const d=defaults();return {audioVolumeDb:base.audioVolumeDb??d.audioVolumeDb,musicAudioMode:base.musicAudioMode??d.musicAudioMode,zoomEnabled:false,vertical:{...d.vertical,...base.vertical},textEnabled:false,text:{...d.text,...base.text},transition:{type:['local','none','inherit'].includes(base.transition?.type)?base.transition.type:'inherit',duration:base.transition?.duration??.35,resource:structuredClone(base.transition?.resource||null)},endEffect:{enabled:false,duration:3,resource:null}};}
 function validate(s){
  const range=(v,a,b,label)=>{if(!Number.isFinite(v)||v<a||v>b)throw Error(label+' không hợp lệ.');};
  range(s.audioVolumeDb,-60,20,'Âm lượng nhạc');if(!['original','removeVocals','keepVocals'].includes(s.musicAudioMode))throw Error('Chế độ âm thanh nhạc không hợp lệ.');
@@ -11,7 +11,7 @@ function validate(s){
  return s;
 }
 function apply(project,d,s){
- validate(s);const videos=d.tracks.filter(t=>t.type==='video').flatMap(t=>t.segments),mats=new Map(d.materials.videos.map(m=>[m.id,m]));
+ validate(s);const videos=d.tracks.filter(t=>t.type==='video').flatMap(t=>t.segments),mats=new Map((d.materials.videos||[]).map(m=>[m.id,m]));
  if(s.zoomEnabled)for(const seg of videos){const m=mats.get(seg.material_id);if(m.type==='photo'||!m.height||Math.abs(m.width/m.height-9/16)>=.02)continue;seg.clip??={};seg.clip.scale={x:s.vertical.scale,y:s.vertical.scale};seg.uniform_scale={on:true,value:1};seg.common_keyframes=(seg.common_keyframes||[]).filter(k=>!/scale/i.test(k.property_type||''));}
  if(s.transition.type!=='inherit'){
   const ids=new Set((d.materials.transitions||[]).map(m=>m.id));for(const seg of videos)seg.extra_material_refs=seg.extra_material_refs.filter(id=>!ids.has(id));d.materials.transitions=[];
