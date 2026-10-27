@@ -68,3 +68,5 @@ Trong màn hình Chỉnh sửa, dùng ↑ / ↓ để đổi thứ tự block Bo
 Credit được gom vào một track khi tạo CapCut. Trong Thiết lập cả bộ hoặc Thiết lập video, mục Hạ nhạc theo footage dùng cùng quy tắc phân tích tiếng gốc như Dựng video; giữ nhạc liên tục và fade cuối bài. Cần ffmpeg trên máy tạo dự án.
 
 Trên máy mới, chạy `Tao shortcut.cmd` trong thư mục cài tool để tạo shortcut Desktop đúng đường dẫn và logo. Nếu di chuyển thư mục cài, chạy lại file này.
+
+Dự án đã tạo CapCut có nút **Tạo lại bản sao**. Tool sao chép bản nháp đã lưu thành tên `_v2`, `_v3`… để chỉnh rồi tạo CapCut mới; giữ nguyên dự án cũ. Các chỉnh sửa thực hiện trực tiếp trong CapCut không được tự nhập ngược về bản nháp này.

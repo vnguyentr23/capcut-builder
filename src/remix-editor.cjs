@@ -114,4 +114,12 @@ async function mutate(store,args){
  }
  rebuild(p);p.editedAt=new Date().toISOString();p.locked=true;remix.save(store,b);return present(p);
 }
-module.exports={open,load,present,summary,pack,init,rebuild,setParts,mutate,candidates,locate};
+function copyForExport(store,id,projectId,existingNames=[]){
+ const b=remix.get(store,id),source=b.projects.find(p=>p.id===projectId);if(!source)throw Error('Không tìm thấy dự án.');if(!source.installed)throw Error('Dự án chưa tạo CapCut; hãy chỉnh bản nháp hiện tại.');
+ const names=new Set(existingNames.map(n=>n.toLocaleLowerCase()));
+ for(const row of store.db.prepare('SELECT summary FROM remix_batches').all())for(const n of JSON.parse(row.summary).names||[])names.add(n.toLocaleLowerCase());
+ for(const row of store.db.prepare('SELECT name FROM projects').all())names.add(row.name.toLocaleLowerCase());
+ const base=source.name.replace(/_v\d+$/i,'').slice(0,85);let version=2,name;do{name=base+'_v'+version++;}while(names.has(name.toLocaleLowerCase()));
+ const p=clone(source);p.id=uid();p.name=name;p.draft.name=name;p.draft.id=uid();p.installed=null;p.locked=true;p.editUndo=[];p.copiedFrom=source.id;p.editedAt=new Date().toISOString();init(p);p.editor.revision=0;p.settings=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);b.projects.push(p);remix.save(store,b);return present(p);
+}
+module.exports={copyForExport,open,load,present,summary,pack,init,rebuild,setParts,mutate,candidates,locate};

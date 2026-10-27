@@ -41,6 +41,7 @@ app.whenReady().then(async()=>{
     remixBatchSettings:async(id)=>require('./remix-settings.cjs').batchSettings(store,id),
     remixBatchSettingsSave:async(p)=>require('./remix-settings.cjs').applyBatch(store,p),
     remixDelete:async(p)=>remix.removeBatch(store,p),
+    remixEditCopy:async({id,projectId})=>{const b=remix.get(store,id),s=store.get(b.channelId),detected=await adapter.detect(s.draft.destination);return require('./remix-editor.cjs').copyForExport(store,id,projectId,detected.existingNames||[]);},
     remixEditOpen:async({id,projectId})=>require('./remix-editor.cjs').open(store,id,projectId),
     remixEditSave:async(p)=>require('./remix-editor.cjs').mutate(store,p),
     remixEditCandidates:async({id,projectId,unitId})=>require('./remix-editor.cjs').candidates(store,id,projectId,unitId),
