@@ -247,3 +247,16 @@ body.libraryExpanded #expandLibrary{border-color:#86d8bf;color:#b7eddd}
 .sequenceActions .removeBody:hover{color:#ffd2ce;border-color:#a86a6a;background:#44292d}
 .bodyCard>.mediaTitle{width:calc(100% - 159px)}
 .bodyCard.hookSequence{border-color:#39645f}
+
+/* Compact library column controls; secondary actions stay in the overflow menu. */
+.groupTop{padding:6px;position:relative}
+.groupTop>.row{gap:4px;flex-wrap:nowrap}
+.groupTop h3{flex:1;min-width:0;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+.groupTop>.row .badge{padding:3px 5px;font-size:9px;white-space:nowrap}
+.groupTop [data-action=tools]{margin-left:0}
+.groupTop>.check{display:flex;align-items:center;gap:5px;margin-top:5px;font-size:10px}
+.groupTop>.check input{width:12px;height:12px}
+.groupSort{gap:4px;margin-top:5px}.groupSort select,.groupSort button{height:25px;padding:2px 6px}
+.group.toolsOpen .groupTools{display:grid;grid-template-columns:1fr 1fr;position:absolute;top:31px;left:6px;right:6px;z-index:8;margin:0;padding:7px;gap:5px;background:#202630;border:1px solid #45505e;border-radius:8px;box-shadow:0 8px 20px #0009}
+.groupTools button{min-height:27px;margin:0;padding:4px 6px;text-align:left;font-size:10px}
+.groupTools .restoreFootage{grid-column:1/-1}
