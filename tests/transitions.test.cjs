@@ -16,3 +16,7 @@ test('Khoảng N dựa trên số slot Body, local resource đi theo transition;
  let t=timeline(d,m);d.pattern=['A','A','B'];assert.deepEqual(timeline(d,m).transitions,t.transitions);assert.deepEqual(t.transitions.map(x=>x.at),[10,20]);assert.equal(t.transitions[0].resource.effectId,'123');
  d.body.pop();t=timeline(d,m);assert.equal(t.transitions.length,1);d.end={id:'e',duration:3,path:'outro'};t=timeline(d,m);assert.equal(t.transitions.length,1);
 });
+
+test('New machine resolves old effect paths and discovers downloaded transitions without HTTP cache',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'ccb-new-machine-'));try{const effect=path.join(root,'Cache','effect','123','a'.repeat(32));fs.mkdirSync(effect,{recursive:true});fs.writeFileSync(path.join(effect,'config.json'),'{}');const project=path.join(root,'Projects','com.lveditor.draft','sample');fs.mkdirSync(project,{recursive:true});fs.writeFileSync(path.join(project,'draft_content.json'),JSON.stringify({materials:{transitions:[{effect_id:'123',name:'Warm',path:'Z:/old-machine/effect/123/old'}]}}));const {resolveEffect,scanTransitions}=require('../src/transitions.cjs');assert.equal(resolveEffect({effectId:'123',path:'Z:/missing'},root).path,effect);const result=await scanTransitions(root);assert.equal(result.items.length,1);assert.equal(result.items[0].path,effect);assert.equal(result.items[0].name,'Warm');assert.equal(resolveEffect({effectId:'../bad',path:'missing'},root).path,'missing');}finally{fs.rmSync(root,{recursive:true,force:true});}
+});

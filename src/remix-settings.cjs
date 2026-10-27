@@ -1,6 +1,12 @@
 const fs=require('node:fs'),path=require('node:path');
 const {defaults,uid}=require('./domain.cjs');
 function initial(base={}){const d=defaults();return {audioVolumeDb:base.audioVolumeDb??d.audioVolumeDb,musicAudioMode:base.musicAudioMode??d.musicAudioMode,zoomEnabled:false,vertical:{...d.vertical,...base.vertical},textEnabled:false,text:{...d.text,...base.text},transition:{type:['local','none','inherit'].includes(base.transition?.type)?base.transition.type:'inherit',duration:base.transition?.duration??.35,resource:structuredClone(base.transition?.resource||null)},endEffect:{enabled:false,duration:3,resource:null}};}
+function effective(project,base={}){
+ const s=structuredClone(project.settings||base);const result={...initial(base),...s};
+ if(result.transition?.resource)result.transition.resource=require('./transitions.cjs').resolveEffect(result.transition.resource);
+ if(result.endEffect?.resource)result.endEffect.resource=require('./transitions.cjs').resolveEffect(result.endEffect.resource);
+ return result;
+}
 function validate(s){
  const range=(v,a,b,label)=>{if(!Number.isFinite(v)||v<a||v>b)throw Error(label+' không hợp lệ.');};
  range(s.audioVolumeDb,-60,20,'Âm lượng nhạc');if(!['original','removeVocals','keepVocals'].includes(s.musicAudioMode))throw Error('Chế độ âm thanh nhạc không hợp lệ.');
@@ -20,7 +26,7 @@ function apply(project,d,s){
  if(s.textEnabled){const texts=new Map((d.materials.texts||[]).map(m=>[m.id,m]));for(const t of d.tracks.filter(t=>t.type==='text'))for(const seg of t.segments){const old=texts.get(seg.material_id);if(!old)continue;let content;try{content=JSON.parse(old.content).text;}catch{throw Error('Không đọc được chữ nguồn.');}if(!content)continue;const m=require('./capcut-writer.cjs').makeText({source:content,path:'credit',text:s.text},seg);Object.assign(old,m,{id:old.id});seg.common_keyframes=(seg.common_keyframes||[]).filter(k=>!/scale|position|alpha/i.test(k.property_type||''));}}
  require('./end-effect.cjs').append(d,require('./end-effect.cjs').timing(s.endEffect,d.duration/1e6),uid);return d;
 }
-function batchSettings(store,id){const b=require('./remix.cjs').get(store,id);return {settings:b.renderSettings||initial(b.settings),updated:b.updated,count:b.projects.filter(p=>!p.installed).length,installed:b.projects.filter(p=>p.installed).length};}
+function batchSettings(store,id){const b=require('./remix.cjs').get(store,id);return {settings:effective({},b.renderSettings||initial(b.settings)),updated:b.updated,count:b.projects.filter(p=>!p.installed).length,installed:b.projects.filter(p=>p.installed).length};}
 function applyBatch(store,{id,settings,updated}){
  const remix=require('./remix.cjs'),b=remix.get(store,id);if(updated!==b.updated)throw Error('Bộ đã thay đổi. Mở lại thiết lập để áp dụng.');validate(settings);
  const pending=b.projects.filter(p=>!p.installed);if(!pending.length)throw Error('Không còn bản nháp chưa tạo CapCut.');
@@ -30,4 +36,4 @@ function applyBatch(store,{id,settings,updated}){
  }
  b.renderSettings=structuredClone(settings);remix.save(store,b);return {count:pending.length,skipped:b.projects.length-pending.length};
 }
-module.exports={initial,validate,apply,batchSettings,applyBatch};
+module.exports={effective,initial,validate,apply,batchSettings,applyBatch};
