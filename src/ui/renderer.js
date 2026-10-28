@@ -17,6 +17,13 @@ window.addEventListener('error',e=>{window.__lastError=e.message;toast(e.message
 window.ccb.onProgress(p=>{$('#busyText').textContent=`Đang đọc ${p.done}/${p.total}: ${p.file}`;$('#progress').max=p.total||1;$('#progress').value=p.done;});
 async function ask(title,value='',note=''){const d=$('#promptDialog'),form=d.querySelector('form');$('#promptTitle').textContent=title;$('#promptValue').value=value;$('#promptNote').textContent=note;d.showModal();$('#promptValue').focus();return new Promise(resolve=>{const finish=result=>{form.onsubmit=null;d.oncancel=null;resolve(result);};form.onsubmit=e=>{e.preventDefault();const result=e.submitter?.value==='ok'?$('#promptValue').value:null;d.close();finish(result);};d.oncancel=()=>finish(null);});}
 
+async function confirmRemoval(title,note){
+ const dialog=document.createElement('dialog'),form=document.createElement('form');form.method='dialog';
+ const heading=document.createElement('h2');heading.textContent=title;const text=document.createElement('p');text.textContent=note;
+ const actions=document.createElement('div');actions.className='row end';const cancel=document.createElement('button');cancel.textContent='Hủy';cancel.value='cancel';const remove=document.createElement('button');remove.textContent='Xóa';remove.value='delete';actions.append(cancel,remove);form.append(heading,text,actions);dialog.append(form);document.body.append(dialog);
+ return new Promise(resolve=>{dialog.addEventListener('close',()=>{const yes=dialog.returnValue==='delete';dialog.remove();resolve(yes);},{once:true});dialog.showModal();cancel.focus();});
+}
+
 function setSetting(key,value){const parts=key.split('.');let obj=state.draft;for(const p of parts.slice(0,-1))obj=obj[p];obj[parts.at(-1)]=value;}
 function getSetting(key){return key.split('.').reduce((o,k)=>o[k],state.draft);}
 function bodyCountText(){const d=state.draft,base=CCBBody.baseBody(d).length,extra=d.body.length-base;return `${base}/${d.target} gốc${extra?' + '+extra+' bù':''}`;}
@@ -308,7 +315,7 @@ async function showFootage(id,host){document.querySelectorAll('#assignedMusic au
   }catch(e){toast(e.message,true);}
 }
 new MutationObserver(()=>{if(inlineHost&&!inlineHost.isConnected)stopFootage();}).observe(document.body,{childList:true,subtree:true});
-$('#deleteNiche').onclick=async()=>{const id=state.id,name=state.name;const value=await ask('Xóa ngách “'+name+'”?','','Gõ XÓA để bỏ ngách, thiết lập và lịch sử của ngách khỏi tool. File footage và project CapCut trên ổ đĩa được giữ nguyên.');if(value==='XÓA')await run('Xóa ngách…',async()=>{stopFootage();accept(await api('deleteNiche',id));await detect();toast('Đã xóa ngách “'+name+'”.');});};
+$('#deleteNiche').onclick=async()=>{if(busy)return;const id=state.id,name=state.name;if(await confirmRemoval('Xóa ngách “'+name+'”?','Xóa tất cả kênh, bản nháp, bộ nhân bản và lịch sử trong ngách khỏi tool. File footage và dự án CapCut trên ổ đĩa được giữ nguyên.'))await run('Xóa ngách…',async()=>{stopFootage();accept(await api('deleteNiche',id));await window.refreshRemixContext?.();toast('Đã xóa ngách “'+name+'”.');});};
 
 $('#niche').onchange=async e=>{const id=e.target.value;await run('Chuyển ngách…',async()=>{accept(await api('load',id));if(!$('#remixPanel').hidden)await window.refreshRemixContext?.();});};
 $('#newNiche').onclick=async()=>{const name=await ask('Tạo ngách mới','','Mỗi ngách có thư mục, thiết lập, draft và lịch sử footage riêng.');if(name?.trim())await run('Tạo ngách…',async()=>{accept(await api('createNiche',name));await detect();});};
