@@ -9,7 +9,7 @@ class CapCutAdapter {
 class LocalCapCutAdapter extends CapCutAdapter {
   constructor(root){super();this.root=root||path.join(process.env.LOCALAPPDATA||'','CapCut');}
   async detect(destination) {
-    const report={kind:'capcut',compatible:false,verified:false,versions:[],samples:[],existingNames:[],destination:destination||path.join(this.root,'User Data','Projects','com.lveditor.draft'),reason:'Cần CapCut 9.6 và dự án mẫu schema 360000 đọc được để tạo draft.'};
+    const report={kind:'capcut',compatible:false,verified:false,versions:[],samples:[],existingNames:[],destination:destination||path.join(this.root,'User Data','Projects','com.lveditor.draft'),reason:'Cần dự án CapCut có schema 360000 và cấu trúc đọc được. Hãy tạo, lưu một dự án mẫu rồi kiểm tra lại.'};
     try {report.versions=(await fsp.readdir(path.join(this.root,'Apps'),{withFileTypes:true})).filter(d=>d.isDirectory()&&/^\d+\./.test(d.name)).map(d=>d.name).sort((a,b)=>b.localeCompare(a,undefined,{numeric:true}));}catch(e){report.installationError=e.code;}
     try {
       const dirs=(await fsp.readdir(report.destination,{withFileTypes:true})).filter(d=>d.isDirectory()&&!d.name.startsWith('.'));
@@ -18,16 +18,20 @@ class LocalCapCutAdapter extends CapCutAdapter {
       const dated=await Promise.all(dirs.map(async d=>({name:d.name,mtime:(await fsp.stat(path.join(report.destination,d.name))).mtimeMs})));
       for(const d of dated.sort((a,b)=>b.mtime-a.mtime).slice(0,12)) {
         const file=path.join(report.destination,d.name,'draft_content.json');
-        try {const st=await fsp.stat(file);if(st.size>25*1024*1024)continue;const j=JSON.parse(await fsp.readFile(file,'utf8'));report.samples.push({folder:d.name,schema:j.version,app:j.last_modified_platform?.app_version,tracks:j.tracks?.length||0,readable:true});}
+        try {const st=await fsp.stat(file);if(st.size>25*1024*1024)continue;const j=JSON.parse(await fsp.readFile(file,'utf8'));report.samples.push({folder:d.name,schema:j.version,app:j.last_modified_platform?.app_version,tracks:j.tracks?.length||0,readable:true,structureValid:Array.isArray(j.tracks)&&j.tracks.every(t=>Array.isArray(t.segments))&&Array.isArray(j.materials?.videos)&&Array.isArray(j.materials?.audios)});}
         catch(e){if(e.code!=='ENOENT')report.samples.push({folder:d.name,readable:false});}
         if(report.samples.length>=3)break;
       }
       report.destinationExists=true;
     }catch(e){report.destinationExists=false;report.destinationError=e.code;}
-    const supported=report.versions[0]?.startsWith('9.6.')&&report.samples.some(s=>s.schema===360000);
+    const readable=report.samples.filter(s=>s.readable);
+    const supported=report.versions.length>0&&readable.some(s=>s.schema===360000&&s.structureValid)&&!readable.some(s=>s.schema!==360000);
+    if(readable.some(s=>s.schema!==360000))report.reason='Định dạng dự án CapCut chưa hỗ trợ: '+[...new Set(readable.map(s=>s.schema))].join(', ')+'. Tool hiện hỗ trợ schema 360000.';
+    if(!report.versions.length)report.reason='Không tìm thấy bản cài CapCut trong thư mục Apps.';
     if(supported&&fs.existsSync(path.join(report.destination,'root_meta_info.json'))){
       try{const index=JSON.parse(await fsp.readFile(path.join(report.destination,'root_meta_info.json'),'utf8'));report.compatible=Array.isArray(index.all_draft_store);}catch{}
     }
+    report.warnings=report.compatible&&!report.versions[0].startsWith('9.6.')?['CapCut '+report.versions[0]+': cấu trúc schema 360000 phù hợp; cần mở kiểm tra một dự án trước khi tạo cả bộ.']:[];
     report.reason=report.compatible?'Bộ ghi schema 360000 sẵn sàng: footage, credit, nhạc và chuyển cảnh đều là track editable. Đã kiểm tra cấu trúc; cần kiểm tra hình ảnh sau khi mở trong CapCut.':report.reason;
     return report;
   }
