@@ -362,6 +362,11 @@ document.addEventListener('dragend',()=>{drag=null;document.querySelectorAll('.d
 $('#trimEditor').addEventListener('keydown',e=>{if(e.code!=='Space'&&e.key!==' ')return;if(e.target.closest('input,select,textarea,[contenteditable=true]'))return;e.preventDefault();e.stopPropagation();if(!e.repeat)$('#previewTrim').click();});
 
 $('#openProjectMusic').onclick=()=>{toggleSettings(true);$('#assignedMusic').closest('details').open=true;$('#assignedMusic').scrollIntoView({block:'start',behavior:'smooth'});};
-function expandLibrary(on){document.body.classList.toggle('libraryExpanded',on);const b=$('#expandLibrary');b.textContent=on?'⛶ Thu gọn':'⛶ Phóng to';b.title=on?'Trở lại bố cục cũ (Esc)':'Phóng to riêng thư viện footage';b.setAttribute('aria-expanded',String(on));if(on)toggleSettings(false);}
+function expandLibrary(on){if(on)expandBody(false);document.body.classList.toggle('libraryExpanded',on);const b=$('#expandLibrary');b.textContent=on?'⛶ Thu gọn':'⛶ Phóng to';b.title=on?'Trở lại bố cục cũ (Esc)':'Phóng to riêng thư viện footage';b.setAttribute('aria-expanded',String(on));if(on)toggleSettings(false);}
 $('#expandLibrary').onclick=()=>expandLibrary(!document.body.classList.contains('libraryExpanded'));
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.querySelector('dialog[open]')&&document.body.classList.contains('libraryExpanded')){e.preventDefault();expandLibrary(false);$('#expandLibrary').focus();}});
+
+function expandBody(on){document.body.classList.toggle('bodyExpanded',on);const button=$('#expandBody');button.textContent=on?'⛶ Thu gọn':'⛶ Mở rộng';button.setAttribute('aria-expanded',String(on));if(on){expandLibrary(false);toggleSettings(false);}}
+$('#expandBody').onclick=()=>expandBody(!document.body.classList.contains('bodyExpanded'));
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.querySelector('dialog[open]')&&document.body.classList.contains('bodyExpanded')){e.preventDefault();expandBody(false);$('#expandBody').focus();}});
+for(const id of ['showEditor','showRemix','toggleBody'])$('#'+id).addEventListener('click',()=>expandBody(false));

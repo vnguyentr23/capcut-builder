@@ -262,3 +262,7 @@ body.libraryExpanded #expandLibrary{border-color:#86d8bf;color:#b7eddd}
 .groupTools .restoreFootage{grid-column:1/-1}
 
 .headerChannel{display:flex;align-items:center;gap:5px;min-width:0;margin-left:12px}.headerChannel label{font-size:10px;flex:none}.headerChannel select{width:155px;min-width:90px;padding:5px 7px;font-size:11px}.headerChannel button{padding:5px 7px;font-size:10px}.remixDraftMode .headerChannel{display:none}@media(max-width:1150px){header .brand h1{max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.headerChannel{margin-left:0}.headerChannel select{width:120px}header .status #saveStatus{display:none}}
+
+body.bodyExpanded #bodyPanel{position:fixed;inset:8px;z-index:35;background:#14191f;display:flex;flex-direction:column;margin:0;padding:12px;min-height:0;box-shadow:0 0 0 10px #101217;border:1px solid #34404d;border-radius:9px}
+body.bodyExpanded #bodyPreview{grid-template-columns:repeat(auto-fill,minmax(min(100%,max(180px,calc(var(--preview-w) + 60px))),1fr));gap:10px;flex:1;min-height:0}
+body.bodyExpanded #expandBody{border-color:#86d8bf;color:#b7eddd}
