@@ -278,3 +278,9 @@ body.bodyExpanded #bodyPreview{display:grid;grid-template-columns:repeat(auto-fi
 .builderCards .builderRail{display:flex;flex-direction:row;align-items:center;gap:4px;width:100%;height:22px;min-height:22px;flex:0 0 22px;z-index:6}
 .builderRail button,.bodyCard .builderRail .sequenceReorder,.bodyCard .builderRail .trimFootage,.bodyCard .builderRail .removeBody{position:static;display:grid;place-items:center;width:22px;min-width:22px;height:22px;min-height:22px;flex:0 0 22px;align-self:center;padding:0;margin:0;font-size:12px;line-height:1;border-radius:4px}
 body.bodyExpanded #bodyPreview{grid-template-columns:repeat(auto-fill,minmax(min(100%,530px),1fr));gap:8px}
+
+/* Four footage slots per row, with all blocks available in one scroll. */
+.editingDeck:not(.bodyHidden){grid-template-columns:minmax(155px,15%) minmax(0,1fr) minmax(500px,36%)}
+.builderCards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.builderCards .bodyCard{width:100%;min-width:0;max-width:none}
+#bodyPager:empty{display:none}
