@@ -114,7 +114,7 @@ async function mutate(store,args){
    if(e.blocks.flatMap(b=>b.units).some(u=>u.fingerprint===m.fingerprint))throw Error('Footage đã có trong video. Dùng Đổi chỗ để chuyển vào Hook.');
    const duration=m.kind==='image'?Number(args.duration||5):m.duration;if(!(duration>0&&duration<=86400))throw Error('Thời lượng không hợp lệ.');
    const material={...clone(t.videoMaterial),id:uid(),path:m.path,material_name:m.name,duration:Math.round(duration*1e6),width:m.width,height:m.height,type:m.kind==='image'?'photo':'video'},segment={...clone(t.videoSegment),id:uid(),material_id:material.id,extra_material_refs:[],source_timerange:{start:0,duration:Math.round(duration*1e6)},target_timerange:{start:0,duration:Math.round(duration*1e6)},volume:1,speed:1};
-   const unit={id:uid(),name:m.name,path:m.path,fingerprint:m.fingerprint,materials:{videos:[material]},segments:[segment],texts:[]};if(op==='ending')e.ending=unit;else e.blocks[0].units.push(unit);
+   const unit={id:uid(),source:m.source||'',name:m.name,path:m.path,fingerprint:m.fingerprint,materials:{videos:[material]},segments:[segment],texts:[]};if(op==='ending')e.ending=unit;else e.blocks[0].units.push(unit);
   }else throw Error('Thao tác không hợp lệ.');
   e.revision++;
  }

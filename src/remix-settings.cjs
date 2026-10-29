@@ -24,6 +24,20 @@ function apply(project,d,s){
   const ids=new Set((d.materials.transitions||[]).map(m=>m.id));for(const seg of videos)seg.extra_material_refs=seg.extra_material_refs.filter(id=>!ids.has(id));d.materials.transitions=[];
   if(s.transition.type==='local')for(const b of project.blocks.slice(0,-1)){const boundary=b.start+b.duration,seg=videos.find(seg=>seg.target_timerange.start+seg.target_timerange.duration===boundary);if(!seg)throw Error('Không tìm thấy ranh giới block.');const r=s.transition.resource,m={id:uid(),type:'transition',name:r.name,effect_id:r.effectId,resource_id:r.resourceId||r.effectId,third_resource_id:'0',source_platform:1,path:r.path.replaceAll('\\','/'),duration:Math.min(Math.round(s.transition.duration*1e6),seg.target_timerange.duration),is_overlap:true,platform:'all',category_id:'100000',category_name:'',request_id:'',is_ai_transition:false,video_path:'',task_id:''};d.materials.transitions.push(m);seg.extra_material_refs.push(m.id);}
  }
+ // Backfill missing Hook credits for old drafts and newly imported/replaced footage.
+ for(const row of (project.ledger||[]).filter(r=>r.block===1)){
+  const ids=new Set(row.segmentIds),parts=videos.filter(v=>ids.has(v.id));if(!parts.length)continue;
+  const start=Math.min(...parts.map(v=>v.target_timerange.start)),end=Math.max(...parts.map(v=>v.target_timerange.start+v.target_timerange.duration));
+  const existing=d.tracks.filter(t=>t.type==='text').flatMap(t=>t.segments);
+  if(existing.some(t=>t.target_timerange.start<end&&t.target_timerange.start+t.target_timerange.duration>start))continue;
+  const m=mats.get(parts[0].material_id),unit=project.editor?.blocks[0]?.units.find(u=>u.id===row.unitId);let source=unit?.source||'';
+  if(!source&&m.path)try{source=fs.readFileSync(m.path.replace(/\.[^.]+$/,'.txt'),'utf8').trim().slice(0,2000);}catch{}
+  if(!source)source=path.basename(m.path||m.material_name||unit?.name||'').replace(/\.[^.]+$/,'').replace(/(?:\s*\(\d+\))+$/,'').trim();
+  if(!source)continue;
+  const template=require('./capcut-template.json'),segment=structuredClone(template.textSegment);Object.assign(segment,{id:uid(),source_timerange:null,target_timerange:{start,duration:end-start},render_timerange:{start:0,duration:0},extra_material_refs:[],common_keyframes:[],keyframe_refs:[],group_id:'',raw_segment_id:''});
+  const text=require('./capcut-writer.cjs').makeText({source,path:m.path||source,text:s.text},segment);segment.material_id=text.id;(d.materials.texts??=[]).push(text);
+  let track=d.tracks.find(t=>t.type==='text');if(!track){track={...structuredClone(template.textTrack),id:uid(),type:'text',name:'Credit',segments:[]};d.tracks.push(track);}track.segments.push(segment);track.segments.sort((a,b)=>a.target_timerange.start-b.target_timerange.start);
+ }
  if(s.textEnabled){const texts=new Map((d.materials.texts||[]).map(m=>[m.id,m]));for(const t of d.tracks.filter(t=>t.type==='text'))for(const seg of t.segments){const old=texts.get(seg.material_id);if(!old)continue;let content;try{content=JSON.parse(old.content).text;}catch{throw Error('Không đọc được chữ nguồn.');}if(!content)continue;const m=require('./capcut-writer.cjs').makeText({source:content,path:'credit',text:s.text},seg);Object.assign(old,m,{id:old.id});seg.common_keyframes=(seg.common_keyframes||[]).filter(k=>!/scale|position|alpha/i.test(k.property_type||''));}}
  require('./end-effect.cjs').append(d,require('./end-effect.cjs').timing(s.endEffect,d.duration/1e6),uid);return d;
 }
