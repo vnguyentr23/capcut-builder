@@ -123,6 +123,7 @@ app.whenReady().then(async()=>{
       s.draft.assignments=domain.assignMusic({...s.draft,musicExcluded:s.musicExcluded||[]},tl,pools,rerandom);store.save(s);return view(s);
     },
     previewMusic:async({state:s,key})=>{const m=s.draft.assignments[key];if(!m||!fs.existsSync(m.path))throw Error('File nhạc không tồn tại.');const token=domain.uid();previewTokens.set(token,m.path);return {url:'ccb-media://'+token+'/audio'};},
+    reorderFootage:async({state:s,a,b})=>{s.draft=require('./reorder-footage.cjs')(s,a,b);store.save(s);return view(s);},
     swapFootageHook:async({state:s,bodyIndex,hookIndex})=>{
       const map=hydrate(s),draft=require('./swap-footage.cjs')(s,map,store.blocked(s.id,s.draft.id),bodyIndex,hookIndex);
       for(const id of [draft.hook[hookIndex].id,draft.body[bodyIndex].id])if(!fs.existsSync(map.get(id).path))throw Error('File footage không tồn tại.');
@@ -134,6 +135,7 @@ app.whenReady().then(async()=>{
       for(const m of [assignments.hook,assignments[key]])if(!fs.existsSync(m.path))throw Error('File nhạc không tồn tại: '+m.path);
       s.draft.assignments=assignments;store.save(s);return view(s);
     },
+    musicChoose:async({state:s,key})=>{const slot=domain.musicSlots(s.draft,domain.timeline(s.draft,hydrate(s))).find(x=>x.key===key);if(!slot)throw Error('Block không còn tồn tại.');const picked=await dialog.showOpenDialog(win,{title:'Chọn nhạc cho block',properties:['openFile'],filters:[{name:'Âm thanh',extensions:['mp3','wav','m4a','aac','flac','ogg']}]});if(picked.canceled)return null;const song=await mediaLib.inspect(picked.filePaths[0],store);if(song.error||song.duration+1e-7<slot.duration)throw Error('Bài nhạc không đọc được hoặc ngắn hơn block.');if((s.musicExcluded||[]).includes(song.fingerprint)||Object.entries(s.draft.assignments).some(([k,m])=>k!==key&&m.fingerprint===song.fingerprint))throw Error('Bài này đã dùng trong video hoặc đã bị loại.');s.draft.assignments[key]=song;store.save(s);return view(s);},
     musicOne:async({state:s,key,exclude=false})=>{
       const slots=domain.musicSlots(s.draft,domain.timeline(s.draft,hydrate(s))),slot=slots.find(x=>x.key===key);if(!slot)throw Error('Block không còn tồn tại.');
       const old=s.draft.assignments[key];let note='';

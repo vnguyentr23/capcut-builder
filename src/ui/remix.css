@@ -36,3 +36,5 @@ body.remixDraftMode main{grid-template-rows:minmax(0,1fr)}
 .rxBlockMusic{display:flex;align-items:center;gap:6px;margin-top:8px;min-width:0}.rxBlockMusic small{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rxBlockMusic button{flex-shrink:0}
 
 .rxBlockMusic{flex-wrap:wrap}.rxBlockMusic audio{width:100%;height:32px}
+
+#rxBlocks{grid-template-columns:repeat(auto-fill,minmax(min(100%,530px),1fr));gap:8px}.rxBlock{padding:8px}.rxBlock .sectionHead{gap:6px}.rxBlock h3{font-size:12px}.rxBlock .sectionHead button,.rxBlockMusic button{padding:4px 7px;font-size:10px}.rxCards{gap:6px;margin-top:7px}.rxCard{flex:1 0 120px;width:auto;max-width:180px}.rxBlockMusic{margin-top:6px;gap:5px}
