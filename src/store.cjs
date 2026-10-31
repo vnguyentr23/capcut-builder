@@ -8,6 +8,7 @@ class Store {
       CREATE TABLE IF NOT EXISTS media(id TEXT PRIMARY KEY,path TEXT NOT NULL,size REAL,mtime REAL,fingerprint TEXT NOT NULL,data TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS media_path ON media(path);
       CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,niche_id TEXT NOT NULL,name TEXT NOT NULL,status TEXT NOT NULL,path TEXT,created_at TEXT NOT NULL,snapshot TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS projects_niche_created ON projects(niche_id,created_at DESC);
       CREATE TABLE IF NOT EXISTS usage(niche_id TEXT NOT NULL,fingerprint TEXT NOT NULL,project_id TEXT NOT NULL,role TEXT NOT NULL,PRIMARY KEY(niche_id,fingerprint,project_id,role));
       CREATE INDEX IF NOT EXISTS usage_niche ON usage(niche_id,fingerprint);
       CREATE TABLE IF NOT EXISTS reservations(niche_id TEXT NOT NULL,draft_id TEXT NOT NULL,fingerprint TEXT NOT NULL,PRIMARY KEY(niche_id,draft_id,fingerprint));

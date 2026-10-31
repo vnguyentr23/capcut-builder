@@ -3,6 +3,7 @@ function schema(store){
  store.db.exec(`CREATE TABLE IF NOT EXISTS channels(id TEXT PRIMARY KEY,root_id TEXT NOT NULL,name TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS remix_batches(id TEXT PRIMARY KEY,root_id TEXT NOT NULL,channel_id TEXT NOT NULL,name TEXT NOT NULL,data TEXT NOT NULL,updated TEXT NOT NULL,summary TEXT NOT NULL DEFAULT '{}');`);
  if(!store.db.prepare('PRAGMA table_info(remix_batches)').all().some(c=>c.name==='summary'))store.db.exec("ALTER TABLE remix_batches ADD COLUMN summary TEXT NOT NULL DEFAULT '{}'");
+ store.db.exec("CREATE INDEX IF NOT EXISTS remix_root_updated ON remix_batches(root_id,updated DESC); CREATE INDEX IF NOT EXISTS remix_channel ON remix_batches(channel_id); CREATE INDEX IF NOT EXISTS remix_summary_migration ON remix_batches(id) WHERE summary='{}'; CREATE INDEX IF NOT EXISTS channels_root ON channels(root_id)");
  for(const row of store.db.prepare("SELECT id,data FROM remix_batches WHERE summary='{}'").all()){const b=JSON.parse(row.data);store.db.prepare('UPDATE remix_batches SET summary=? WHERE id=?').run(JSON.stringify({count:b.projects.length,sourceCount:b.sources.length,created:b.projects.filter(p=>p.installed).length,names:b.projects.map(p=>p.name),signatures:[...(b.inheritedHistory||[]),...b.projects.map(p=>p.signature)]}),row.id);}
  for(const row of store.db.prepare('SELECT id FROM niches').all())if(!store.db.prepare('SELECT id FROM channels WHERE id=?').get(row.id))store.db.prepare('INSERT INTO channels VALUES(?,?,?)').run(row.id,row.id,'Kênh gốc');
 }
