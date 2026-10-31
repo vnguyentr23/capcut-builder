@@ -118,10 +118,11 @@ function withMusic(project,settings,audioPieces=null){
 }
 async function prepare(project,base,options={}){
  const settings=require('./remix-settings.cjs').effective(project,base),duck=require('./ducking.cjs');
- if(!duck.validate(settings).enabled)return withMusic(project,settings);
+ duck.validate(settings);
  const materials=new Map((project.draft.materials.videos||[]).map(m=>[m.id,m]));
  const clips=project.draft.tracks.filter(t=>t.type==='video').flatMap(t=>t.segments.map(seg=>{const m=materials.get(seg.material_id),v=(project.draft.materials.vocal_separations||[]).find(v=>seg.extra_material_refs.includes(v.id));return {path:m.path,kind:m.type==='photo'?'image':'video',hasAudio:m.has_audio,start:seg.target_timerange.start/1e6,duration:seg.target_timerange.duration/1e6,sourceStart:(seg.source_timerange?.start||0)/1e6,sourceDuration:(seg.source_timerange?.duration||seg.target_timerange.duration)/1e6,audioMode:seg.volume===0?'mute':v?.choice===1?'removeVocals':v?.choice===2?'keepVocals':'original'};}));
  const manifest={draft:settings,clips,audio:project.assignments.map(a=>({...a,key:String(a.block),start:a.start/1e6,duration:a.duration/1e6,sourceStart:0,volumeDb:settings.audioVolumeDb,volume:10**(settings.audioVolumeDb/20),fadeOut:Math.min(4,a.duration/1e6)}))};
+ await require('./music-alignment.cjs').apply(manifest,options);
  await duck.apply(manifest,{...options,analyze:options.analyze||(c=>duck.levels({...c,duration:c.sourceDuration}))});
  return withMusic(project,settings,manifest.audio.map(a=>({...a,start:Math.round(a.start*1e6),duration:Math.round((a.start+a.duration)*1e6)-Math.round(a.start*1e6),sourceStart:Math.round(a.sourceStart*1e6),fadeOut:Math.round(a.fadeOut*1e6)})));
 }
@@ -143,7 +144,7 @@ async function install(store,id,adapter,progress=()=>{},projectId=null){
  const writer=require('./capcut-writer.cjs');if(await writer.isRunning())throw Error('Lưu và đóng CapCut trước khi tạo bộ dự án.');
  const names=new Set(detected.existingNames.map(n=>n.toLowerCase()));for(const p of selected.filter(p=>!p.installed))if(names.has(p.name.toLowerCase()))throw Error('Tên đã tồn tại trong CapCut: '+p.name);
  for(const [index,p] of selected.entries())if(!p.installed){
-  const draft=await prepare(p,b.renderSettings||b.settings,{progress});writer.validate(draft);
+  const draft=await prepare(p,b.renderSettings||b.settings,{progress,store});writer.validate(draft);
   const manifest={name:p.name,remixBatchId:b.id,draft:{...defaults(),name:p.name},clips:p.blocks.flatMap(bl=>bl.clips.map(c=>({...c,role:bl.hook?'hook':'body'})))};
   const result=await writer.install(manifest,detected.destination,[],writer.isRunning,draft);
   p.installed=result.path;p.locked=true;

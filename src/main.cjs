@@ -155,6 +155,7 @@ app.whenReady().then(async()=>{
       const check=await preflight(s,map,store.blocked(s.id,s.draft.id),detection,output);
       if(!check.ok)return {check};
       const m=domain.manifest(s.draft,s,map);const {existingNames,...publicDetection}=detection;m.capcutDetection=publicDetection;m.sources=s.sources||{};
+      await require('./music-alignment.cjs').apply(m,{store,progress:p=>win.webContents.send('scan-progress',p)});
       await require('./ducking.cjs').apply(m,{progress:p=>win.webContents.send('scan-progress',p)});
       const result=s.draft.mode==='capcut'?await adapter.write(m):await new ManifestAdapter().write(m,output);
       if(result.kind==='capcut'){m.mode='capcut';m.capcutCompatible=true;}store.pref('lastOutput',result.path);

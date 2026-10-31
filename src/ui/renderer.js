@@ -48,7 +48,7 @@ function render(){
   $('#endFile').textContent=shortPath(state.draft.end?.path);$('#endFile').title=state.draft.end?.path||'';$('#endDurationLabel').hidden=state.draft.end?.kind!=='image';$('#endDuration').value=state.draft.end?.duration||5;
   $('#introPosition').value=state.draft.introPosition;$('#introAfter').value=state.draft.introAfterBlocks;$('#introAfter').hidden=state.draft.introPosition!=='afterBlocks';
   for(const id of ['hookDelay','fade','audioVolumeDb','musicAudioMode','mode'])$('#'+id).value=state.draft[id];
-  document.querySelectorAll('[data-setting]').forEach(e=>{if(e.type==='checkbox')e.checked=getSetting(e.dataset.setting);else e.value=e.dataset.percent?Math.round(getSetting(e.dataset.setting)*100):getSetting(e.dataset.setting);});
+  document.querySelectorAll('[data-setting]').forEach(e=>{if(e.type==='checkbox')e.checked=getSetting(e.dataset.setting);else e.value=e.dataset.percent?Math.round(getSetting(e.dataset.setting)*100):(getSetting(e.dataset.setting)??(e.dataset.setting==='musicAlignment'?'start':''));});
   $('#destination').textContent=state.draft.destination||'Tự phát hiện thư mục CapCut trên máy';
   renderHook();renderPattern();renderBody();renderMusic();renderHistory();renderLocalTransitions();renderEndEffects();updateSummary();
 }

@@ -1,6 +1,6 @@
 const fs=require('node:fs'),path=require('node:path');
 const {defaults,uid}=require('./domain.cjs');
-function initial(base={}){const d=defaults();return {ducking:{...require('./ducking.cjs').defaults(),...base.ducking},audioVolumeDb:base.audioVolumeDb??d.audioVolumeDb,musicAudioMode:base.musicAudioMode??d.musicAudioMode,zoomEnabled:false,vertical:{...d.vertical,...base.vertical},textEnabled:false,text:{...d.text,...base.text},transition:{type:['local','none','inherit'].includes(base.transition?.type)?base.transition.type:'inherit',duration:base.transition?.duration??.35,resource:structuredClone(base.transition?.resource||null)},endEffect:{enabled:false,duration:3,resource:null}};}
+function initial(base={}){const d=defaults();return {musicAlignment:base.musicAlignment||'start',ducking:{...require('./ducking.cjs').defaults(),...base.ducking},audioVolumeDb:base.audioVolumeDb??d.audioVolumeDb,musicAudioMode:base.musicAudioMode??d.musicAudioMode,zoomEnabled:false,vertical:{...d.vertical,...base.vertical},textEnabled:false,text:{...d.text,...base.text},transition:{type:['local','none','inherit'].includes(base.transition?.type)?base.transition.type:'inherit',duration:base.transition?.duration??.35,resource:structuredClone(base.transition?.resource||null)},endEffect:{enabled:false,duration:3,resource:null}};}
 function effective(project,base={}){
  const s=structuredClone(project.settings||base);const result={...initial(base),...s};
  if(result.transition?.resource)result.transition.resource=require('./transitions.cjs').resolveEffect(result.transition.resource);
@@ -10,6 +10,7 @@ function effective(project,base={}){
 function validate(s){
  require('./ducking.cjs').validate(s);
  const range=(v,a,b,label)=>{if(!Number.isFinite(v)||v<a||v>b)throw Error(label+' không hợp lệ.');};
+ if(!['start','audibleEnd'].includes(s.musicAlignment||'start'))throw Error('Chế độ căn nhạc không hợp lệ.');
  range(s.audioVolumeDb,-60,20,'Âm lượng nhạc');if(!['original','removeVocals','keepVocals'].includes(s.musicAudioMode))throw Error('Chế độ âm thanh nhạc không hợp lệ.');
  range(s.vertical?.scale,.01,10,'Zoom');if(!['inherit','none','local'].includes(s.transition?.type))throw Error('Chuyển cảnh không hợp lệ.');range(s.transition.duration,.01,5,'Thời lượng chuyển cảnh');
  if(s.transition.type==='local'){const r=s.transition.resource;if(!r?.effectId||r.effectType!==19||!r.path||!fs.existsSync(path.join(r.path,'config.json')))throw Error('Chọn chuyển cảnh CapCut đã tải.');}
