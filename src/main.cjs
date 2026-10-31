@@ -11,7 +11,8 @@ const {LocalCapCutAdapter,ManifestAdapter}=require('./adapter.cjs');
 const {preflight}=require('./preflight.cjs');
 const {pathToFileURL}=require('node:url');
 protocol.registerSchemesAsPrivileged([{scheme:'ccb-media',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true}}]);
-app.setAppUserModelId('CapCutCompilationBuilder.Desktop');
+const windowsIdentity=require('./windows-identity.cjs');
+app.setAppUserModelId(windowsIdentity.APP_ID);
 const previewTokens=new Map();
 const base=path.resolve(__dirname,'..');
 const data=process.env.CCB_DATA_DIR||path.join(base,'data');
@@ -170,6 +171,10 @@ app.whenReady().then(async()=>{
   ipcMain.handle('ccb',async(e,action,payload)=>{if(!trusted(e)||!Object.hasOwn(routes,action))throw Error('Yêu cầu không hợp lệ.');try{return {ok:true,value:await routes[action](payload)};}catch(err){return {ok:false,error:err.message};}});
   ipcMain.on('flush',(e,s)=>{try{if(!trusted(e))throw Error('Không hợp lệ');store.save(s);e.returnValue=true;}catch{e.returnValue=false;}});
   win=new BrowserWindow({icon:path.join(__dirname,'assets','app.ico'),width:1480,height:1020,minWidth:1060,minHeight:740,backgroundColor:'#101217',title:'CapCut Compilation Builder',show:!smoke,autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:!smoke}});
+  if(process.platform==='win32'){
+    win.setAppDetails({appId:windowsIdentity.APP_ID,appIconPath:path.join(__dirname,'assets','app.ico'),appIconIndex:0,relaunchCommand:'"'+process.execPath+'" "'+base+'"',relaunchDisplayName:'CapCut Compilation Builder'});
+    if(!smoke)try{windowsIdentity.repair(shell,path.join(app.getPath('desktop'),'CapCut Compilation Builder.lnk'),base,process.execPath);}catch(e){console.warn('Shortcut:',e.message);}
+  }
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   win.webContents.on('will-navigate',e=>e.preventDefault());
   win.webContents.on('console-message',details=>{if(smoke&&details.level==='error')fs.appendFileSync(path.join(data,'smoke-errors.log'),details.message+'\n');});
