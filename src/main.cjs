@@ -47,9 +47,9 @@ app.whenReady().then(async()=>{
     remixEditSave:async(p)=>require('./remix-editor.cjs').mutate(store,p),
     remixEditCandidates:async({id,projectId,unitId})=>require('./remix-editor.cjs').candidates(store,id,projectId,unitId),
     remixEditMedia:async({id,projectId,unitId,sourceId,sourceUnitId})=>{
-      const edit=require('./remix-editor.cjs'),{b,p}=edit.load(store,id,projectId);let file;
-      if(sourceId){const sources=await remix.analyzeSources(b.sources);file=sources.find(s=>s.sourceId===sourceId)?.blocks.flatMap(b=>b.units).find(u=>u.id===sourceUnitId)?.path;}
-      else file=edit.locate(p.editor,unitId).u.path;
+      const edit=require('./remix-editor.cjs');let file;
+      if(sourceId){const {b}=edit.load(store,id,projectId);const sources=await remix.analyzeSources(b.sources);file=sources.find(s=>s.sourceId===sourceId)?.blocks.flatMap(b=>b.units).find(u=>u.id===sourceUnitId)?.path;}
+      else{file=remix.mediaPath(store,id,projectId,unitId);if(!file){const {p}=edit.load(store,id,projectId);file=edit.locate(p.editor,unitId).u.path;}}
       if(!file||!fs.existsSync(file))throw Error('Không tìm thấy footage.');const m=await mediaLib.inspect(file,store),token=domain.uid();previewTokens.set(token,file);return {url:'ccb-media://'+token+'/video',mediaId:m.id,duration:m.duration,thumbnail:await thumbnails.get(m)};
     },
     remixEditChoose:async({id,projectId,revision,op,blockId})=>{if(!['addHook','ending','blockMusic'].includes(op))throw Error('Thao tác không hợp lệ.');const r=await dialog.showOpenDialog(win,{title:op==='blockMusic'?'Chọn nhạc cho block':op==='ending'?'Chọn video / ảnh kết thúc':'Thêm video Hook',properties:['openFile'],filters:[{name:'Video / ảnh',extensions:op==='blockMusic'?['mp3','wav','m4a','aac','flac','ogg']:op==='ending'?['mp4','mov','mkv','webm','png','jpg','jpeg','webp']:['mp4','mov','mkv','webm']}]});return r.canceled?null:require('./remix-editor.cjs').mutate(store,{id,projectId,revision,op,blockId,path:r.filePaths[0]});},
