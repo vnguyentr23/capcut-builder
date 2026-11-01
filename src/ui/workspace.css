@@ -284,3 +284,5 @@ body.bodyExpanded #bodyPreview{grid-template-columns:repeat(auto-fill,minmax(min
 .builderCards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
 .builderCards .bodyCard{width:100%;min-width:0;max-width:none}
 #bodyPager:empty{display:none}
+
+#busy{z-index:10000!important;position:fixed;top:0;left:0;right:0;min-height:38px;background:#223c34;border-bottom:1px solid #86d8bf;box-shadow:0 4px 18px #0008}

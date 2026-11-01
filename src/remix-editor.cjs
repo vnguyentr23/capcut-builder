@@ -118,7 +118,7 @@ async function mutate(store,args){
   }else throw Error('Thao tác không hợp lệ.');
   e.revision++;
  }
- rebuild(p);p.editedAt=new Date().toISOString();p.locked=true;remix.save(store,b);return present(p);
+ if(op!=='blockMusic')rebuild(p);p.editedAt=new Date().toISOString();p.locked=true;remix.save(store,b);return present(p);
 }
 function copyForExport(store,id,projectId,existingNames=[]){
  const b=remix.get(store,id),source=b.projects.find(p=>p.id===projectId);if(!source)throw Error('Không tìm thấy dự án.');if(!source.installed)throw Error('Dự án chưa tạo CapCut; hãy chỉnh bản nháp hiện tại.');
