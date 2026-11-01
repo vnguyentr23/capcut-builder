@@ -48,7 +48,7 @@ function render(){
   $('#endFile').textContent=shortPath(state.draft.end?.path);$('#endFile').title=state.draft.end?.path||'';$('#endDurationLabel').hidden=state.draft.end?.kind!=='image';$('#endDuration').value=state.draft.end?.duration||5;
   $('#introPosition').value=state.draft.introPosition;$('#introAfter').value=state.draft.introAfterBlocks;$('#introAfter').hidden=state.draft.introPosition!=='afterBlocks';
   for(const id of ['hookDelay','fade','audioVolumeDb','musicAudioMode','mode'])$('#'+id).value=state.draft[id];
-  document.querySelectorAll('[data-setting]').forEach(e=>{if(e.type==='checkbox')e.checked=getSetting(e.dataset.setting);else e.value=e.dataset.percent?Math.round(getSetting(e.dataset.setting)*100):(getSetting(e.dataset.setting)??(e.dataset.setting==='musicAlignment'?'start':''));});
+  document.querySelectorAll('[data-setting]').forEach(e=>{if(e.type==='checkbox')e.checked=getSetting(e.dataset.setting);else e.value=e.dataset.percent?Math.round(getSetting(e.dataset.setting)*100):getSetting(e.dataset.setting);});
   $('#destination').textContent=state.draft.destination||'Tự phát hiện thư mục CapCut trên máy';
   renderHook();renderPattern();renderBody();renderMusic();renderHistory();renderLocalTransitions();renderEndEffects();updateSummary();
 }
@@ -357,7 +357,7 @@ $('#introPosition').onchange=e=>{state.draft.introPosition=e.target.value;$('#in
 $('#introAfter').oninput=e=>{state.draft.introAfterBlocks=Number(e.target.value);changed();};
 $('#musicAudioMode').onchange=e=>{state.draft.musicAudioMode=e.target.value;changed();};
 for(const id of ['hookDelay','fade','audioVolumeDb'])$('#'+id).oninput=e=>{state.draft[id]=Number(e.target.value);changed();};
-document.querySelectorAll('[data-setting]').forEach(e=>e.addEventListener('input',()=>{setSetting(e.dataset.setting,e.type==='checkbox'?e.checked:e.type==='number'?Number(e.value)/(e.dataset.percent?100:1):e.value);changed();if(e.dataset.setting==='pinPriority')renderGroups();if(e.dataset.setting==='transition.type')renderLocalTransitions();if(['transition.type','blockSize','shortClipFill.enabled','shortClipFill.threshold'].includes(e.dataset.setting))renderBody();if(e.dataset.setting==='blockSize')renderMusic();if(e.dataset.setting==='musicAlignment'){renderBody();renderMusic();}}));
+document.querySelectorAll('[data-setting]').forEach(e=>e.addEventListener('input',()=>{setSetting(e.dataset.setting,e.type==='checkbox'?e.checked:e.type==='number'?Number(e.value)/(e.dataset.percent?100:1):e.value);changed();if(e.dataset.setting==='pinPriority')renderGroups();if(e.dataset.setting==='transition.type')renderLocalTransitions();if(['transition.type','blockSize','shortClipFill.enabled','shortClipFill.threshold'].includes(e.dataset.setting))renderBody();if(e.dataset.setting==='blockSize')renderMusic();}));
 $('#fillMusic').onclick=()=>run('Gán nhạc còn thiếu…',async()=>{accept(await api('music',{state,rerandom:false}));toast('Nhạc đã được gán và khóa theo draft.');});
 $('#randomMusic').onclick=()=>run('Đang random lại nhạc…',async()=>{accept(await api('music',{state,rerandom:true}));toast('Đã random lại tất cả nhạc.');});
 $('#endDuration').oninput=e=>{if(state.draft.end?.kind==='image'){state.draft.end.duration=Number(e.target.value);changed();renderBody();}};
