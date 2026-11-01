@@ -55,6 +55,7 @@ function build(manifest,catalog=[]){
     const s=add('video',m,c),scale=c.transform?.scale||1;s.clip={scale:{x:scale,y:scale},rotation:0,transform:{x:0,y:0},flip:{horizontal:false,vertical:false},alpha:1};s.uniform_scale={on:true,value:1};s.volume=1;s.last_nonzero_volume=1;byKey.set(c.key,s);
     const mode=c.audioMode||'original';if(!['original','removeVocals','keepVocals','mute'].includes(mode))throw Error('Chế độ âm thanh footage không hợp lệ.');
     if(mode==='mute')s.volume=0;
+    if(c.audioFadeOut)require('./block-audio-fades.cjs').attach(d,s,us(c.audioFadeOut));
     if(['removeVocals','keepVocals'].includes(mode)&&m.has_audio){const vocal={id:uid(),type:'vocal_separation',choice:mode==='removeVocals'?1:2,removed_sounds:[],time_range:{start:us(c.sourceStart||0),duration:us(c.duration)},production_path:'',final_algorithm:'vocal_separate',enter_from:'timeline_menu'};(d.materials.vocal_separations||=[]).push(vocal);s.extra_material_refs.push(vocal.id);}
     if(c.source&&c.text){const textSegment=add('text',{id:''},c),text=makeText(c,textSegment);textSegment.material_id=text.id;d.materials.texts.push(text);}
   }
@@ -63,6 +64,7 @@ function build(manifest,catalog=[]){
     const video=byKey.get(a.videoKey);if(!video)throw Error('Âm thanh gốc không khớp footage.');
     const m=clone(template.audioMaterial);Object.assign(m,{id:uid(),unique_id:uid(),type:'extract_music',path:slash(a.path),name:a.name,duration:us(a.sourceDuration)});d.materials.audios.push(m);
     const s=add('audio',m,a,originalAudio);s.volume=manifest.clips.find(c=>c.key===a.videoKey)?.audioMode==='mute'?0:(a.volume??1);s.last_nonzero_volume=s.volume;s.clip=null;s.uniform_scale=null;s.track_render_index=3;
+    const fade=manifest.clips.find(c=>c.key===a.videoKey)?.audioFadeOut;if(fade)require('./block-audio-fades.cjs').attach(d,s,us(fade));
     video.volume=0;video.last_nonzero_volume=1;const videoMaterial=d.materials.videos.find(m=>m.id===video.material_id);videoMaterial.extra_type_option=1;videoMaterial.has_sound_separated=true;
   }
   for(const a of manifest.audio){

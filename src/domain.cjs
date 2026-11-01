@@ -96,6 +96,9 @@ function timeline(draft,media) {
   });
   const lastHook=clips.findLast(c=>c.role==='hook');
   if(draft.transition.type!=='none'&&lastHook){const next=clips[clips.indexOf(lastHook)+1];if(next)transitions.unshift({after:lastHook.key,before:next.key,at:lastHook.start+lastHook.duration,type:draft.transition.type,duration:draft.transition.duration,...(draft.transition.type==='local'?{resource:structuredClone(draft.transition.resource)}:{})});}
+  body.forEach((c,i)=>{if(i===body.length-1||bodyBlocks[i+1]!==bodyBlocks[i])c.audioFadeOut=Math.min(3,c.duration);});
+  if(lastHook)lastHook.audioFadeOut=Math.min(3,lastHook.duration);
+  const ending=clips.find(c=>c.role==='end');if(ending)ending.audioFadeOut=Math.min(3,ending.duration);
   return {clips,transitions,duration:time};
 }
 function musicSlots(draft,tl) {
