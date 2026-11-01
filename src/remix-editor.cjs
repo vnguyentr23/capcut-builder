@@ -48,7 +48,7 @@ function rebuild(p){
  e.blocks.forEach((b,bi)=>{const start=cursor,clips=b.units.map((u,i)=>append(u,bi,i));blocks.push({index:bi,hook:bi===0,start,duration:cursor-start,clips});if(bi<e.blocks.length-1&&video.segments.length)for(const t of b.transitions){const m=clone(t);m.id=uid();m.duration=Math.min(m.duration||350000,video.segments.at(-1).target_timerange.duration);(out.materials.transitions??=[]).push(m);video.segments.at(-1).extra_material_refs.push(m.id);}});
  if(e.ending){append(e.ending,-1,0);blocks.at(-1).duration=cursor-blocks.at(-1).start;}
  out.duration=cursor;out.name=p.name;p.draft=out;p.ledger=ledger;p.blocks=blocks;
- p.assignments=p.assignments.flatMap(a=>{const b=blocks[a.block];if(!b)return [];const delay=b.hook?Math.min(3e6,b.duration):0,duration=b.duration-delay;if(duration<=0||duration>Math.round(a.sourceDuration*1e6))return [];return [{...a,start:b.start+delay,duration}];});
+ p.assignments=p.assignments.flatMap(a=>{const b=blocks[a.block];if(!b)return [];const delay=b.hook?Math.min((p.settings?.hookDelay??3)*1e6,b.duration):0,duration=b.duration-delay;if(duration<=0||duration>Math.round(a.sourceDuration*1e6))return [];return [{...a,start:b.start+delay,duration}];});
  p.signature=crypto.createHash('sha256').update(JSON.stringify(e.blocks.slice(1).flatMap(b=>b.units.map(u=>u.fingerprint)))).digest('hex');
 }
 function setParts(u,parts){
@@ -94,12 +94,12 @@ async function mutate(store,args){
   }
   else if(op==='blockMusic'){
    const index=e.blocks.findIndex(x=>x.id===args.blockId),block=p.blocks[index];if(!block)throw Error('Block không tồn tại.');
-   const duration=block.duration-(index===0?Math.min(3e6,block.duration):0);if(duration<=0)throw Error('Hook quá ngắn để thêm nhạc sau 3 giây.');
+   const duration=block.duration-(index===0?Math.min((p.settings?.hookDelay??3)*1e6,block.duration):0);if(duration<=0)throw Error('Hook ngắn hơn độ trễ nhạc đã thiết lập.');
    const media=require('./media.cjs'),old=p.assignments.find(a=>a.block===index),used=new Set(p.assignments.filter(a=>a.block!==index).map(a=>a.fingerprint));let song;
    if(args.path){song=await media.inspect(args.path,store);if(!['.mp3','.wav','.m4a','.aac','.flac','.ogg','.wma'].includes(path.extname(args.path).toLowerCase()))throw Error('Hãy chọn file âm thanh.');}
    else{const folder=args.folder||b.musicFolders?.[index===0?'hook':'body'];if(!folder)throw Error('Chọn thư mục nhạc trước.');const pool=(await media.scan(folder,'audio',store)).filter(m=>!m.error&&Math.round(m.duration*1e6)>=duration&&!used.has(m.fingerprint)&&m.fingerprint!==old?.fingerprint);if(!pool.length)throw Error('Không có bài khác đủ dài và chưa dùng trong video.');song=pool[crypto.randomInt(pool.length)];}
    if(song.error||!song.duration||Math.round(song.duration*1e6)<duration)throw Error('Bài nhạc ngắn hơn block hoặc không đọc được.');if(used.has(song.fingerprint))throw Error('Bài nhạc đã được dùng trong video.');
-   p.assignments=p.assignments.filter(a=>a.block!==index);p.assignments.push({block:index,path:song.path,name:song.name,fingerprint:song.fingerprint,sourceDuration:song.duration,start:block.start+(index===0?3e6:0),duration});p.assignments.sort((a,z)=>a.block-z.block);
+   p.assignments=p.assignments.filter(a=>a.block!==index);p.assignments.push({block:index,path:song.path,name:song.name,fingerprint:song.fingerprint,sourceDuration:song.duration,start:block.start+(index===0?Math.min((p.settings?.hookDelay??3)*1e6,block.duration):0),duration});p.assignments.sort((a,z)=>a.block-z.block);
   }
   else if(op==='name'){if(nameErrors(args.name).length)throw Error(nameErrors(args.name).join(' '));if(b.projects.some(q=>q.id!==p.id&&q.name.toLowerCase()===args.name.toLowerCase()))throw Error('Tên trùng bản khác trong bộ.');p.name=args.name;}
   else if(op==='parts')setParts(locate(e,args.unitId).u,args.parts);

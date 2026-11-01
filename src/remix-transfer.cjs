@@ -7,6 +7,7 @@ async function exportPackage(store,id,file){
  const batch=remix.get(store,id),state=store.get(batch.channelId),resources=new Map();
  const cached=new Map(store.db.prepare('SELECT path,data FROM media').all().map(r=>[norm(r.path),JSON.parse(r.data)]));
  async function add(p){if(!p||resources.has(norm(p)))return;let m=cached.get(norm(p));if(fs.existsSync(p)&&!m){const st=fs.statSync(p);m={fingerprint:await media.hash(p),size:st.size};}resources.set(norm(p),{path:p,name:path.basename(p),fingerprint:m?.fingerprint||null,size:m?.size||null});}
+ await add(batch.renderSettings?.intro?.path);await add(batch.settings?.intro?.path);for(const p of batch.projects)await add(p.settings?.intro?.path);
  for(const src of batch.sources)for(const m of src.draft.materials?.videos||[])await add(m.path);
  for(const p of batch.projects){for(const m of p.draft.materials?.videos||[])await add(m.path);for(const a of p.assignments)await add(a.path);}
  const library=state.groups.map(g=>({name:g.name,folder:g.folder,items:g.items.map(id=>store.media(id)).filter(Boolean).map(m=>({name:m.name,path:m.path,fingerprint:m.fingerprint,size:m.size}))}));

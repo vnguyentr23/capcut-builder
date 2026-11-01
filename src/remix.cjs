@@ -98,7 +98,7 @@ async function assignMusic(store,id,folders,progress=()=>{},projectId=null){
  const b=get(store,id),lib=require('./media.cjs'),pools={};
  for(const kind of ['hook','body']){if(!folders[kind])throw Error('Chọn thư mục nhạc '+kind);pools[kind]=(await lib.scan(folders[kind],'audio',store,progress)).filter(m=>!m.error&&m.duration>0);}
  for(const p of b.projects.filter(p=>!p.installed&&(projectId?p.id===projectId:(!p.locked||!p.assignments.length)))){
-  const slots=p.blocks.map(block=>{const delay=block.hook?Math.min(3e6,block.duration):0;return {block,duration:block.duration-delay,start:block.start+delay};}).filter(s=>s.duration>0);
+  const timing=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);const slots=p.blocks.map(block=>{const delay=block.hook?Math.min(timing.hookDelay*1e6,block.duration):0;return {block,duration:block.duration-delay,start:block.start+delay};}).filter(s=>s.duration>0);
   const candidates=new Map(slots.map(s=>[s.block.index,[...new Map(pools[s.block.hook?'hook':'body'].filter(m=>Math.round(m.duration*1e6)>=s.duration).map(m=>[m.fingerprint,m])).values()].map(m=>({m,rank:crypto.randomInt(2147483647)})).sort((a,b)=>a.rank-b.rank).map(x=>x.m)]));
   const owners=new Map(),chosen=new Map();
   function match(index,seen){for(const song of candidates.get(index)||[]){if(seen.has(song.fingerprint))continue;seen.add(song.fingerprint);const owner=owners.get(song.fingerprint);if(owner===undefined||match(owner,seen)){owners.set(song.fingerprint,index);chosen.set(index,song);return true;}}return false;}
@@ -109,9 +109,9 @@ async function assignMusic(store,id,folders,progress=()=>{},projectId=null){
  b.musicFolders=folders;store.pref('remix-settings:'+b.channelId,JSON.stringify({...preferences(store,b.channelId),folders}));return save(store,b);
 }
 function withMusic(project,settings,audioPieces=null){
- settings=require('./remix-settings.cjs').effective(project,settings);
+ settings=require('./remix-settings.cjs').effective(project,settings);project=require('./remix-timing.cjs').layout(project,settings);
  const d=structuredClone(project.draft),t=require('./capcut-template.json'),track={...structuredClone(t.audioTrack),id:uid(),name:'Nhạc nhân bản',type:'audio',segments:[]};d.materials.audios??=[];d.materials.audio_fades??=[];
- for(const a of audioPieces||project.assignments){const m={...structuredClone(t.audioMaterial),id:uid(),unique_id:uid(),path:a.path,name:a.name,type:'extract_music',duration:Math.round(a.sourceDuration*1e6)};d.materials.audios.push(m);const fade={id:uid(),type:'audio_fade',fade_type:0,fade_in_duration:0,fade_out_duration:Math.min(a.fadeOut??4e6,a.duration)};d.materials.audio_fades.push(fade);const volume=a.volume??10**((settings.audioVolumeDb??-10)/20),s={...structuredClone(t.audioSegment),id:uid(),material_id:m.id,source_timerange:{start:a.sourceStart||0,duration:a.duration},target_timerange:{start:a.start,duration:a.duration},volume,last_nonzero_volume:volume,extra_material_refs:[fade.id]};
+ for(const a of audioPieces||project.assignments){const m={...structuredClone(t.audioMaterial),id:uid(),unique_id:uid(),path:a.path,name:a.name,type:'extract_music',duration:Math.round(a.sourceDuration*1e6)};d.materials.audios.push(m);const fade={id:uid(),type:'audio_fade',fade_type:0,fade_in_duration:0,fade_out_duration:Math.min(a.fadeOut??((settings.fade??4)*1e6),a.duration)};d.materials.audio_fades.push(fade);const volume=a.volume??10**((settings.audioVolumeDb??-10)/20),s={...structuredClone(t.audioSegment),id:uid(),material_id:m.id,source_timerange:{start:a.sourceStart||0,duration:a.duration},target_timerange:{start:a.start,duration:a.duration},volume,last_nonzero_volume:volume,extra_material_refs:[fade.id]};
   if(['removeVocals','keepVocals'].includes(settings.musicAudioMode)){const v={id:uid(),type:'vocal_separation',choice:settings.musicAudioMode==='keepVocals'?2:1,removed_sounds:[],time_range:{start:a.sourceStart||0,duration:a.duration},production_path:'',final_algorithm:'vocal_separate',enter_from:'timeline_menu'};(d.materials.vocal_separations||=[]).push(v);s.extra_material_refs.push(v.id);}track.segments.push(s);
  }
  if(track.segments.length)d.tracks.push(track);
@@ -124,10 +124,10 @@ function withMusic(project,settings,audioPieces=null){
 }
 async function prepare(project,base,options={}){
  const settings=require('./remix-settings.cjs').effective(project,base),duck=require('./ducking.cjs');
- duck.validate(settings);
+ duck.validate(settings);project=require('./remix-timing.cjs').layout(project,settings);
  const materials=new Map((project.draft.materials.videos||[]).map(m=>[m.id,m]));
  const clips=project.draft.tracks.filter(t=>t.type==='video').flatMap(t=>t.segments.map(seg=>{const m=materials.get(seg.material_id),v=(project.draft.materials.vocal_separations||[]).find(v=>seg.extra_material_refs.includes(v.id));return {path:m.path,kind:m.type==='photo'?'image':'video',hasAudio:m.has_audio,start:seg.target_timerange.start/1e6,duration:seg.target_timerange.duration/1e6,sourceStart:(seg.source_timerange?.start||0)/1e6,sourceDuration:(seg.source_timerange?.duration||seg.target_timerange.duration)/1e6,audioMode:seg.volume===0?'mute':v?.choice===1?'removeVocals':v?.choice===2?'keepVocals':'original'};}));
- const manifest={draft:settings,clips,audio:project.assignments.map(a=>({...a,key:String(a.block),start:a.start/1e6,duration:a.duration/1e6,sourceStart:0,volumeDb:settings.audioVolumeDb,volume:10**(settings.audioVolumeDb/20),fadeOut:Math.min(4,a.duration/1e6)}))};
+ const manifest={draft:settings,clips,audio:project.assignments.map(a=>({...a,key:String(a.block),start:a.start/1e6,duration:a.duration/1e6,sourceStart:0,volumeDb:settings.audioVolumeDb,volume:10**(settings.audioVolumeDb/20),fadeOut:Math.min(settings.fade??4,a.duration/1e6)}))};
  await require('./music-alignment.cjs').apply(manifest,options);
  await duck.apply(manifest,{...options,analyze:options.analyze||(c=>duck.levels({...c,duration:c.sourceDuration}))});
  return withMusic(project,settings,manifest.audio.map(a=>({...a,start:Math.round(a.start*1e6),duration:Math.round((a.start+a.duration)*1e6)-Math.round(a.start*1e6),sourceStart:Math.round(a.sourceStart*1e6),fadeOut:Math.round(a.fadeOut*1e6)})));
@@ -137,7 +137,7 @@ function check(batch){
  for(const p of batch.projects){if(p.installed)continue;const settings=require('./remix-settings.cjs').effective(p,batch.renderSettings||batch.settings);try{require('./remix-settings.cjs').validate(settings);}catch(e){issues.push(p.name+': '+e.message);}for(const m of p.draft.materials.videos||[])if(m.path&&(!fs.existsSync(m.path)||(batch.transferIssues||[]).some(i=>norm(i.path)===norm(m.path))))missing.add(m.path);for(const a of p.assignments)if(!fs.existsSync(a.path))missing.add(a.path);
   if(p.blocks.some(b=>b.clips.some(c=>!/^([a-f0-9]{64})$/i.test(c.fingerprint||''))))issues.push(p.name+': footage chưa có dấu vân tay. Khôi phục file nguồn rồi trộn lại.');
   if(nameErrors(p.name).length)issues.push(p.name+': tên không hợp lệ.');
-  if(p.assignments.length!==p.blocks.filter(b=>!b.hook||b.duration>3e6).length)issues.push(p.name+': chưa gán đủ nhạc.');
+  if(p.assignments.length!==p.blocks.filter(b=>!b.hook||b.duration>(settings.hookDelay??3)*1e6).length)issues.push(p.name+': chưa gán đủ nhạc.');
   if(new Set(p.assignments.map(a=>a.fingerprint)).size!==p.assignments.length)issues.push(p.name+': nhạc bị trùng.');
   for(const a of p.assignments)if(a.duration>Math.round(a.sourceDuration*1e6))issues.push(p.name+': bài nhạc ngắn hơn block.');
   for(const m of (settings.transition.type==='inherit'?p.draft.materials.transitions||[]:[]))if(m.path&&!fs.existsSync(path.join(require('./transitions.cjs').resolveEffect(m).path,'config.json')))issues.push(p.name+': thiếu chuyển cảnh '+(m.name||m.effect_id));
