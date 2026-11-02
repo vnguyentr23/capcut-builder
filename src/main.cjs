@@ -125,8 +125,14 @@ app.whenReady().then(async()=>{
     },
     previewMusic:async({state:s,key})=>{const m=s.draft.assignments[key];if(!m||!fs.existsSync(m.path))throw Error('File nhạc không tồn tại.');const token=domain.uid();previewTokens.set(token,m.path);const slot=domain.musicSlots(s.draft,domain.timeline(s.draft,hydrate(s))).find(x=>x.key===key);if(!slot||slot.duration<=0)throw Error('Không có đoạn nhạc trong block này.');const preview={draft:s.draft,audio:[{key,path:m.path,sourceStart:0,duration:Math.min(slot.duration,m.duration)}]};const slots=domain.musicSlots(s.draft,domain.timeline(s.draft,hydrate(s)));if(key===slots.at(-1)?.key)await require('./music-alignment.cjs').apply(preview,{store});return {url:'ccb-media://'+token+'/audio',sourceStart:preview.audio[0].sourceStart,duration:preview.audio[0].duration};},
     reorderFootage:async({state:s,a,b})=>{s.draft=require('./reorder-footage.cjs')(s,a,b);store.save(s);return view(s);},
-    promoteBody:async({state:s,index})=>{s.draft=require('./promote-body.cjs')(s.draft,hydrate(s),index);store.save(s);return view(s);},
-    swapFootageHook:async({state:s,bodyIndex,hookIndex})=>{
+    swapFootageHook:async({state:s,bodyIndex,hookIndex,pinHook})=>{
+      if(pinHook===true){
+        const id=s.draft.hook[hookIndex]?.id,group=s.groups.find(g=>g.items.includes(id));
+        if(group?.lockedOnly&&!group.pinned?.includes(id)){
+          (group.pinned??=[]).push(id);
+          s.draft.pinOrder=[...(s.draft.pinOrder||[]).filter(entry=>entry!==id),id];
+        }
+      }
       const map=hydrate(s),draft=require('./swap-footage.cjs')(s,map,store.blocked(s.id,s.draft.id),bodyIndex,hookIndex);
       for(const id of [draft.hook[hookIndex].id,draft.body[bodyIndex].id])if(!fs.existsSync(map.get(id).path))throw Error('File footage không tồn tại.');
       s.draft=draft;store.save(s);return view(s);
