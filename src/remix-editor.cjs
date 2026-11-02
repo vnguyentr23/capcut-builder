@@ -69,12 +69,7 @@ function setParts(u,parts){
 }
 function load(store,id,projectId){const b=remix.get(store,id),p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy bản nháp.');const before=JSON.stringify(p.settings),hadEditor=!!p.editor;init(p);p.settings=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);return {b,p,changed:!hadEditor||before!==JSON.stringify(p.settings)};}
 function open(store,id,projectId){const {b,p,changed}=load(store,id,projectId);if(changed)remix.save(store,b);return present(p);}
-function exportedFootage(store,channelId){
- const used=new Set(store.db.prepare("SELECT DISTINCT u.fingerprint FROM usage u JOIN projects p ON p.id=u.project_id WHERE u.niche_id=? AND p.status IN ('CREATED','REMIX_CREATED')").all(channelId).map(r=>r.fingerprint));
- // Imported packages may contain installed drafts without local project history.
- for(const row of store.db.prepare('SELECT data FROM remix_batches WHERE channel_id=?').all(channelId))for(const p of JSON.parse(row.data).projects||[])if(p.installed)for(const b of p.blocks||[])for(const c of b.clips||[])if(c.fingerprint)used.add(c.fingerprint);
- return used;
-}
+const exportedFootage=require('./remix-used.cjs');
 async function candidates(store,id,projectId,unitId){const {b,p}=load(store,id,projectId),at=locate(p.editor,unitId),sources=await remix.analyzeSources(b.sources),exported=exportedFootage(store,b.channelId),used=new Set([...(at.b.hook?[]:exported),...p.editor.blocks.flatMap(b=>b.units.map(u=>u.fingerprint))]);return sources.flatMap(s=>s.blocks.flatMap((bl,bi)=>bl.units.flatMap((u,slot)=>slot===at.i&&((at.b.hook&&bi===0)||(!at.b.hook&&bi>0&&Math.abs(bi-p.editor.blocks.indexOf(at.b))<=1))&&!used.has(u.identity)?[{usedBefore:exported.has(u.identity),sourceId:s.sourceId,unitId:u.id,name:u.name||path.basename(u.path),path:u.path,sourceName:s.name,block:bi,slot,duration:u.duration/1e6}]:[])));}
 async function mutate(store,args){
  const {id,projectId,revision,op}=args,{b,p}=load(store,id,projectId),e=p.editor;
