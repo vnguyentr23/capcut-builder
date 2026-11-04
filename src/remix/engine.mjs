@@ -35,8 +35,7 @@ export function normalizeFootageZoom(segment) {
 
 export function analyze(draft, name, sourceId, sourcePath = '') {
   const issues = [], warnings = [];
-  // Channel overlays are regenerated from the destination channel's settings.
-  const tracks = (draft.tracks || []).filter(t => !(t.type === 'video' && t.name === 'Logo kênh') && !(t.type === 'text' && t.name === 'Tên kênh chìm'));
+  const tracks = draft.tracks || [];
   const videoTracks = tracks.filter(t => t.type === 'video' && t.segments.length);
   const materials = new Map();
   for (const [type, list] of Object.entries(draft.materials || {})) {
