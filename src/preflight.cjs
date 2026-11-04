@@ -1,9 +1,14 @@
 const fs=require('node:fs');
 const path=require('node:path');
 const {nameErrors,timeline,musicSlots,clipRange}=require('./domain.cjs');
-async function preflight(state,media,used,capcut,output) {
+async function preflight(state,media,used,capcut,output,channelVideo) {
   const d=state.draft,checks=[],base=require('./ui/body-layout.js').baseBody(d),fill=d.shortClipFill||{enabled:false,threshold:5};
   const add=(level,text)=>checks.push({level,text});
+  if(channelVideo){
+    const settings=require('./channel-video.cjs');
+    try{settings.validate(channelVideo);}catch(e){add('error',e.message);}
+    if(channelVideo.enabled)add('warning',settings.warning);
+  }
   nameErrors(d.name).forEach(t=>add('error',t));
   if(!nameErrors(d.name).length)add('ok','Tên dự án hợp lệ trên Windows.');
   if(fs.existsSync(path.join(output,d.name)))add('error','Tên đã tồn tại trong thư mục manifest. Bấm “Tự sửa tên”.');

@@ -75,7 +75,7 @@
  $r('rxName').onchange=()=>saveEdit('name',{name:$r('rxName').value.trim()});$r('rxUndo').onclick=()=>saveEdit('undo');
  for(const kind of ['hook','body'])$r(kind==='hook'?'rxHookMusic':'rxBodyMusic').onclick=async()=>{const p=await api('choose','folder');if(p){folders[kind]=p;paint();}};
  $r('rxMusic').onclick=()=>task(async()=>{doc=await api('remixEditMusic',{...base(),folders});paint();});
- $r('rxCheck').onclick=()=>task(async()=>{const c=await api('remixEditCheck',base());$r('rxHint').textContent=c.ok?'Sẵn sàng tạo dự án CapCut.':[...c.issues,...c.missing.map(p=>'Thiếu: '+p)].join('\n');},'Đang kiểm tra dự án CapCut…');
+ $r('rxCheck').onclick=()=>task(async()=>{const c=await api('remixEditCheck',base());$r('rxHint').textContent=c.ok?'Sẵn sàng tạo dự án CapCut.':[...c.issues,...c.missing.map(p=>'Thiếu: '+p)].join('\n');if(c.warning)$r('rxHint').textContent+='\n'+c.warning;},'Đang kiểm tra dự án CapCut…');
  $r('rxCopy').onclick=()=>task(async()=>{doc=await api('remixEditCopy',base());mediaCache.clear();selectedSwap=null;paint();toast('Đã mở bản nháp '+doc.name+'. Chỉnh xong rồi bấm TẠO DỰ ÁN CAPCUT.');});
  $r('rxBuild').onclick=()=>task(async()=>{doc=await api('remixEditInstall',base());paint();toast('Đã tạo '+doc.name+' trong CapCut.');},'Đang tạo dự án CapCut…');
  let editMedia,seekJob=null,scrubbing=false,scrubVersion=0;
