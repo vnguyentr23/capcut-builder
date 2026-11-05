@@ -97,3 +97,17 @@ test('Source collections grow once and each channel consumes saved additions ind
   await assert.rejects(remix.updateFromSource(store,{id:first.id,stateId:a.id}),/Không có video nguồn mới/);
  }finally{store.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
+test('Source picker keeps newest CapCut save per normalized project name, ignoring newer draft saves',()=>{
+ const store=new Store(':memory:');
+ try{
+  const root=store.create('History');
+  for(const [id,name,status,time] of [
+   ['old','ANIMALS_DAD_3','CREATED','2026-11-01T10:00:00Z'],
+   ['latest','Animals Dad 3','CREATED','2026-11-02T10:00:00Z'],
+   ['draft','ANIMALS DAD 3','DRAFT','2026-11-03T10:00:00Z'],
+   ['other','ANIMALS DAD 4','IMPORTED','2026-11-01T10:00:00Z']
+  ])store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(id,root.id,name,status,'',''+time,'{}');
+  assert.deepEqual(remix.sourceProjects(store,root.id).map(p=>p.id),['latest','other']);
+  assert.equal(store.history(root.id).length,4);
+ }finally{store.close();}
+});

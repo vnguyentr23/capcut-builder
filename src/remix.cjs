@@ -17,7 +17,14 @@ function save(store,b){batchReadCache.get(store)?.delete(b.id);b.updated=new Dat
 function present(b){return {...b,sources:b.sources.map(s=>({id:s.id,name:s.name})),projects:b.projects.map(p=>({id:p.id,name:p.name,locked:p.locked,installed:p.installed,editedAt:p.editedAt,sourceName:p.sourceName,signature:p.signature,reusedPercent:p.reusedPercent,blocks:p.blocks,assignments:p.assignments,draft:{duration:p.draft.duration}})),assetManifest:!!b.assetManifest};}
 function sourceProjects(store,id){
  const root=store.get(id).rootNicheId||id;
- return store.history(root).filter(p=>['IMPORTED','CREATED'].includes(p.status)).map(p=>({...p,channel:'Kênh gốc'})).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
+ const latest=new Map();
+ // History is newest first. Draft saves never replace the last CapCut version.
+ for(const project of store.history(root)){
+  if(!['IMPORTED','CREATED'].includes(project.status))continue;
+  const key=project.name.trim().replace(/[_\s]+/g,' ').toLocaleLowerCase();
+  if(!latest.has(key))latest.set(key,{...project,channel:'Kênh gốc'});
+ }
+ return [...latest.values()].sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
 }
 function signature(blocks){return hash(blocks.slice(1).flatMap(b=>b.units.map(u=>u.identity)));}
 async function analyzeSources(sources,options={}){
