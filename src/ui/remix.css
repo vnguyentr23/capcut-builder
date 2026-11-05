@@ -38,3 +38,9 @@ body.remixDraftMode main{grid-template-rows:minmax(0,1fr)}
 .rxBlockMusic{flex-wrap:wrap}.rxBlockMusic audio{width:100%;height:32px}
 
 #rxBlocks{grid-template-columns:repeat(auto-fill,minmax(min(100%,530px),1fr));gap:8px}.rxBlock{padding:8px}.rxBlock .sectionHead{gap:6px}.rxBlock h3{font-size:12px}.rxBlock .sectionHead button,.rxBlockMusic button{padding:4px 7px;font-size:10px}.rxCards{gap:6px;margin-top:7px}.rxCard{flex:1 0 120px;width:auto;max-width:180px}.rxBlockMusic{margin-top:6px;gap:5px}
+.batchCards{display:flex;flex-direction:column;gap:12px;margin:8px 0 14px}
+.batchCards h3{font-size:12px;color:#9baabb;margin:0 0 7px}
+.batchCardGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;max-height:240px;overflow:auto}
+.batchCard{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:7px;padding:12px;min-width:0}
+.batchCard strong{overflow-wrap:anywhere}.batchCard small{color:#9baabb}
+.batchCard.selected{border-color:#8cd6c5;background:#233b36}

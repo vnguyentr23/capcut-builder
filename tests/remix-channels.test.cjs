@@ -71,3 +71,11 @@ test('Append sources remixes only pending projects, retains exported projects an
   assert.equal(JSON.stringify(remix.get(store,batch.id)),before);
  }finally{store.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
+test('Source picker uses root originals and excludes generated remixes and other channels',()=>{
+ const store=new Store(':memory:');
+ try{
+  const root=store.create('Niche'),child=channels.create(store,root.id,'Child');
+  for(const [id,scope,status] of [['original',root.id,'CREATED'],['imported',root.id,'IMPORTED'],['remixed',root.id,'REMIX_CREATED'],['other',child.id,'CREATED']])store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(id,scope,id,status,'','now','{}');
+  assert.deepEqual(remix.sourceProjects(store,child.id).map(p=>p.id).sort(),['imported','original']);
+ }finally{store.close();}
+});

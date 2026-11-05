@@ -15,7 +15,10 @@ function musicPreview(store,id,projectId){const b=readCached(store,id),p=b.proje
 
 function save(store,b){batchReadCache.get(store)?.delete(b.id);b.updated=new Date().toISOString();const summary={count:b.projects.length,sourceCount:b.sources.length,created:b.projects.filter(p=>p.installed).length,names:b.projects.map(p=>p.name),signatures:[...new Set([...(b.inheritedHistory||[]),...b.projects.map(p=>p.signature)])]};store.db.prepare('INSERT INTO remix_batches(id,root_id,channel_id,name,data,updated,summary) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated=excluded.updated,name=excluded.name,summary=excluded.summary').run(b.id,b.rootId,b.channelId,b.name,JSON.stringify(b),b.updated,JSON.stringify(summary));return b;}
 function present(b){return {...b,sources:b.sources.map(s=>({id:s.id,name:s.name})),projects:b.projects.map(p=>({id:p.id,name:p.name,locked:p.locked,installed:p.installed,editedAt:p.editedAt,sourceName:p.sourceName,signature:p.signature,reusedPercent:p.reusedPercent,blocks:p.blocks,assignments:p.assignments,draft:{duration:p.draft.duration}})),assetManifest:!!b.assetManifest};}
-function sourceProjects(store,id){const root=store.get(id).rootNicheId||id;return channels.list(store,root).flatMap(c=>store.history(c.id).filter(p=>['IMPORTED','CREATED','REMIX_CREATED'].includes(p.status)).map(p=>({...p,channel:c.name}))).sort((a,b)=>a.channel.localeCompare(b.channel)||a.name.localeCompare(b.name,undefined,{numeric:true}));}
+function sourceProjects(store,id){
+ const root=store.get(id).rootNicheId||id;
+ return store.history(root).filter(p=>['IMPORTED','CREATED'].includes(p.status)).map(p=>({...p,channel:'Kênh gốc'})).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
+}
 function signature(blocks){return hash(blocks.slice(1).flatMap(b=>b.units.map(u=>u.identity)));}
 async function analyzeSources(sources,options={}){
  const e=await engine();for(const src of sources){src.fingerprints??={};for(const m of src.draft.materials?.videos||[])if(m.path&&!src.fingerprints[norm(m.path)]&&fs.existsSync(m.path))src.fingerprints[norm(m.path)]=await require('./media.cjs').hash(m.path);}
