@@ -397,8 +397,20 @@ $('#build').onclick=()=>run('Kiểm tra và tạo dự án…',async()=>{const r
 $('#openOutput').onclick=()=>run('Mở thư mục đầu ra…',()=>api('openOutput'));
 async function scanFonts(button){button.disabled=true;const label=button.textContent;button.textContent='Đang quét…';try{window.localFonts=await api('fonts');fillFontPickers();toast('Đã đọc '+window.localFonts.length+' phông chữ.');}catch(e){toast(e.message,true);}finally{button.disabled=false;button.textContent=label;}}
 $('#scanFonts').onclick=e=>scanFonts(e.currentTarget);
-document.addEventListener('input',e=>{if(e.target.matches('.fontSearch'))fillFontPickers();});
-function fillFontPickers(){document.querySelectorAll('.fontPicker').forEach(el=>{const value=el.value||'Arial',query=(el.closest('label')?.querySelector('.fontSearch')?.value||'').trim().toLocaleLowerCase();el.innerHTML='<option value="'+esc(value)+'">'+esc((window.localFonts||[]).find(f=>f.path===value)?.name||shortPath(value))+'</option>'+(window.localFonts||[]).filter(f=>f.path!==value&&f.name.toLocaleLowerCase().includes(query)).map(f=>'<option value="'+esc(f.path)+'">'+esc(f.name)+'</option>').join('');el.value=value;});}
+function fillFontPickers(){document.querySelectorAll('.fontPicker').forEach(select=>{
+ const selected=select.value||'Arial',fonts=window.localFonts||[],name=fonts.find(f=>f.path===selected)?.name||shortPath(selected);
+ select.innerHTML='<option value="'+esc(selected)+'">'+esc(name)+'</option>'+fonts.filter(f=>f.path!==selected).map(f=>'<option value="'+esc(f.path)+'">'+esc(f.name)+'</option>').join('');select.value=selected;
+ let box=select.parentElement.querySelector('.fontCombo');
+ if(!box){box=document.createElement('span');box.className='fontCombo';box.innerHTML='<input type="text" role="combobox" aria-label="Chọn hoặc tìm phông chữ" aria-autocomplete="list" aria-expanded="false" autocomplete="off"><span class="fontComboList" role="listbox" hidden></span>';select.before(box);select.hidden=true;
+ const input=box.querySelector('input'),list=box.querySelector('.fontComboList');let active=-1;
+ const close=()=>{list.hidden=true;input.setAttribute('aria-expanded','false');input.value=select.selectedOptions[0]?.textContent||'Arial';};
+ const paint=query=>{const options=[...select.options].filter(o=>o.textContent.toLocaleLowerCase().includes(query.toLocaleLowerCase()));list.innerHTML=options.length?options.map(o=>'<button type="button" role="option" aria-selected="'+(o.value===select.value)+'" data-value="'+esc(o.value)+'">'+esc(o.textContent)+'</button>').join(''):'<span class="fontEmpty">Không tìm thấy phông</span>';active=-1;list.hidden=false;input.setAttribute('aria-expanded','true');};
+ input.onfocus=()=>{paint('');input.select();};input.onclick=()=>{if(list.hidden){paint('');input.select();}};input.oninput=()=>paint(input.value);
+ list.onmousedown=e=>e.preventDefault();list.onclick=e=>{const item=e.target.closest('button[data-value]');if(!item)return;select.value=item.dataset.value;select.dispatchEvent(new Event('input',{bubbles:true}));select.dispatchEvent(new Event('change',{bubbles:true}));close();};
+ input.onkeydown=e=>{const buttons=[...list.querySelectorAll('button')];if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}else if(['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();if(list.hidden)paint('');const items=[...list.querySelectorAll('button')];active=Math.max(0,Math.min(items.length-1,active+(e.key==='ArrowDown'?1:-1)));items.forEach((b,i)=>b.classList.toggle('active',i===active));items[active]?.scrollIntoView({block:'nearest'});}else if(e.key==='Enter'&&!list.hidden){e.preventDefault();buttons[active>=0?active:0]?.click();}else if(e.key==='Tab')close();};input.onblur=close;
+ }
+ const input=box.querySelector('input');if(document.activeElement!==input)input.value=name;
+});}
 function toggleSettings(open){$('#settingsSidebar').hidden=!open;$('#toggleSettings').setAttribute('aria-expanded',String(open));if(open){$('#closeSettings').focus();fillFontPickers();}else $('#toggleSettings').focus();}
 $('#toggleSettings').onclick=()=>toggleSettings($('#settingsSidebar').hidden);
 $('#closeSettings').onclick=()=>toggleSettings(false);
