@@ -397,7 +397,8 @@ $('#build').onclick=()=>run('Kiểm tra và tạo dự án…',async()=>{const r
 $('#openOutput').onclick=()=>run('Mở thư mục đầu ra…',()=>api('openOutput'));
 async function scanFonts(button){button.disabled=true;const label=button.textContent;button.textContent='Đang quét…';try{window.localFonts=await api('fonts');fillFontPickers();toast('Đã đọc '+window.localFonts.length+' phông chữ.');}catch(e){toast(e.message,true);}finally{button.disabled=false;button.textContent=label;}}
 $('#scanFonts').onclick=e=>scanFonts(e.currentTarget);
-function fillFontPickers(){document.querySelectorAll('.fontPicker').forEach(el=>{const value=el.value||'Arial';el.innerHTML='<option value="'+esc(value)+'">'+esc((window.localFonts||[]).find(f=>f.path===value)?.name||shortPath(value))+'</option>'+(window.localFonts||[]).filter(f=>f.path!==value).map(f=>'<option value="'+esc(f.path)+'">'+esc(f.name)+'</option>').join('');el.value=value;});}
+document.addEventListener('input',e=>{if(e.target.matches('.fontSearch'))fillFontPickers();});
+function fillFontPickers(){document.querySelectorAll('.fontPicker').forEach(el=>{const value=el.value||'Arial',query=(el.closest('label')?.querySelector('.fontSearch')?.value||'').trim().toLocaleLowerCase();el.innerHTML='<option value="'+esc(value)+'">'+esc((window.localFonts||[]).find(f=>f.path===value)?.name||shortPath(value))+'</option>'+(window.localFonts||[]).filter(f=>f.path!==value&&f.name.toLocaleLowerCase().includes(query)).map(f=>'<option value="'+esc(f.path)+'">'+esc(f.name)+'</option>').join('');el.value=value;});}
 function toggleSettings(open){$('#settingsSidebar').hidden=!open;$('#toggleSettings').setAttribute('aria-expanded',String(open));if(open){$('#closeSettings').focus();fillFontPickers();}else $('#toggleSettings').focus();}
 $('#toggleSettings').onclick=()=>toggleSettings($('#settingsSidebar').hidden);
 $('#closeSettings').onclick=()=>toggleSettings(false);
