@@ -30,7 +30,7 @@ app.whenReady().then(async()=>{
   let current=store.pref('active')||store.list()[0]?.id;
   if(!current)current=store.create('Ngách đầu tiên').id;
   const hydrate=s=>{const map=store.hydrate(s);for(const [id,m] of map)if(s.sources&&Object.hasOwn(s.sources,id))map.set(id,{...m,source:s.sources[id]});return map;};
-  function view(s){return {canNewDraft:store.canNewDraft(s),channels:channels.list(store,s.id),effectCatalog:JSON.parse(store.pref('effectCatalog')||'[]'),transitionCatalog:JSON.parse(store.pref('transitionCatalog')||'[]'),state:s,media:[...hydrate(s).values()],used:[...store.blocked(s.id,s.draft.id)],history:store.history(s.id),niches:store.list(),output};}
+  function view(s){return {fontCatalog:JSON.parse(store.pref('fontCatalog')||'[]'),canNewDraft:store.canNewDraft(s),channels:channels.list(store,s.id),effectCatalog:JSON.parse(store.pref('effectCatalog')||'[]'),transitionCatalog:JSON.parse(store.pref('transitionCatalog')||'[]'),state:s,media:[...hydrate(s).values()],used:[...store.blocked(s.id,s.draft.id)],history:store.history(s.id),niches:store.list(),output};}
   async function prepareOrder(s){
     const map=hydrate(s),pending=[...map.values()].filter(m=>m.createdAt===undefined);let cursor=0;
     await Promise.all(Array.from({length:Math.min(16,pending.length)},async()=>{while(cursor<pending.length){const m=pending[cursor++];try{m.createdAt=(await fs.promises.stat(m.path)).birthtimeMs;store.putMedia({...store.media(m.id),createdAt:m.createdAt});}catch{m.createdAt=0;}}}));
@@ -60,7 +60,7 @@ app.whenReady().then(async()=>{
     scrubFrame:async({id,time})=>require('./scrub-frame.cjs').scrubFrame(store.media(id),time),
     thumbnail:async(id)=>{const m=store.media(id);if(!m)throw Error('Không tìm thấy footage.');return thumbnails.get(m);},
     deleteNiche:async(id)=>{store.deleteNiche(id);current=store.list()[0]?.id||store.create('Ngách mới').id;store.pref('active',current);return view(store.get(current));},
-    fonts:async()=>require('./fonts.cjs').scan(),
+    fonts:async()=>{const items=await require('./fonts.cjs').scan(true);store.pref('fontCatalog',JSON.stringify(items));return items;},
     effects:async()=>{const result=await scanTransitions(undefined,7);store.pref('effectCatalog',JSON.stringify(result.items));return result;},
     transitions:async()=>{const result=await scanTransitions();store.pref('transitionCatalog',JSON.stringify(result.items));return result;},
     load:async(id)=>{if(id)current=store.pref('channel-active:'+id)||id;store.pref('active',current);const s=store.get(current);return view(s.groups.some(g=>!g.orderVersion)?await prepareOrder(s):s);},

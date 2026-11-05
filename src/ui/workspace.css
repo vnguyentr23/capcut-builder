@@ -306,3 +306,5 @@ body.bodyExpanded #bodyPreview{grid-template-columns:repeat(auto-fill,minmax(min
 .creditSettings label:has([data-setting="text.size"]) input[type=number]{grid-column:2;grid-row:2}
 
 .creditStyles{grid-column:1/-1;display:flex;gap:8px}.creditStyles label.check{flex:1;background:#222831;border:1px solid #353e49;border-radius:5px;padding:0 8px;min-height:30px}.creditStyles label:has(input:checked){border-color:#9cdecf;background:#273c39}
+
+.fontControls{display:flex;align-items:center;gap:6px}.fontControls select{flex:1;min-width:0}.assetScan{font-size:11px;padding:4px 8px;min-height:26px;white-space:nowrap;flex-shrink:0}.creditSettings .fontControls .assetScan{width:auto}
