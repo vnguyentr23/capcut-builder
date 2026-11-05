@@ -6,7 +6,7 @@ function defaults() {
   return {id:uid(), name:'Dự án mới', target:58, pinPriority:true, spreadScarce:true, pattern:[], hook:[], body:[], intro:null, end:null,
     introPosition:'afterHook', introAfterBlocks:1, blockSize:3, blockVersion:1, shortClipFill:{enabled:false,threshold:5}, music:{hook:'',body:'',end:''}, assignments:{},
     endEffect:{enabled:false,duration:3,resource:null}, transition:{type:'none',duration:0.35}, vertical:{scale:1.4},
-    text:{bold:false,italic:false,underline:false,letterCase:'original',font:'Arial',size:15,scale:0.2,marginLeft:50,marginBottom:50,color:'#ffffff',opacity:1,stroke:2,strokeColor:'#000000',shadow:true,alignment:'left'},
+    text:{prefix:'',bold:false,italic:false,underline:false,letterCase:'original',font:'Arial',size:15,scale:0.2,marginLeft:50,marginBottom:50,color:'#ffffff',opacity:1,stroke:2,strokeColor:'#000000',shadow:true,alignment:'left'},
     hookDelay:3, fade:4, destination:'', mode:'capcut', ducking:require('./ducking.cjs').defaults(),audioVolumeDb:-10,musicAudioMode:'removeVocals',presetVersion:3,writerVersion:1,musicVersion:3};
 }
 function migratePresets(draft){

@@ -28,7 +28,8 @@ function makeText(c,segment){
   // XAO_VIDEO's calibrated text geometry: font size 15 / scale 0.2 = 33.333 px per em.
   const em=p.size*p.scale*(100/9),maxWidth=1920-p.marginLeft;
   const width=s=>font.layout(s).positions.reduce((n,x)=>n+x.xAdvance,0)/font.unitsPerEm*em;
-  const source=p.letterCase==='upper'?c.source.toLocaleUpperCase():p.letterCase==='lower'?c.source.toLocaleLowerCase():p.letterCase==='title'?c.source.toLocaleLowerCase().replace(/(^|[^\p{L}\p{N}])(\p{L})/gu,(_,a,b)=>a+b.toLocaleUpperCase()):c.source;
+  const credit=require('./credit-prefix.cjs').format(c.source,p.prefix,c.previousPrefix);
+  const source=p.letterCase==='upper'?credit.toLocaleUpperCase():p.letterCase==='lower'?credit.toLocaleLowerCase():p.letterCase==='title'?credit.toLocaleLowerCase().replace(/(^|[^\p{L}\p{N}])(\p{L})/gu,(_,a,b)=>a+b.toLocaleUpperCase()):credit;
   const lines=[];for(const raw of source.split('\n')){let line='';for(const ch of raw){if(line&&width(line+ch)>maxWidth){lines.push(line);line='';}line+=ch;}lines.push(line);}
   const text=lines.join('\n'),w=Math.max(...lines.map(width)),h=em*(1+(lines.length-1)*1.2);
   if(h>1080-p.marginBottom)throw Error('Credit quá dài để đặt trong khung hình: '+path.basename(c.path));
@@ -36,7 +37,7 @@ function makeText(c,segment){
   const rgb=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255);
   const style={fill:{content:{render_type:'solid',solid:{color:rgb(p.color)}}},font:{path:slash(fontPath),id:''},size:p.size,bold:!!p.bold,italic:!!p.italic,underline:!!p.underline,range:[0,text.length]};
   if(p.stroke>0)style.strokes=[{content:{render_type:'solid',solid:{color:rgb(p.strokeColor)}},width:p.stroke/100}];
-  m.content=JSON.stringify({text,styles:[style]});m.words={start_time:[],end_time:[],text:[]};m.current_words=clone(m.words);m.text_to_audio_ids=[];m.relevance_segment=[];
+  m.content=JSON.stringify({text,styles:[style]});if(p.prefix!==undefined)m.ccb_credit_prefix=p.prefix;m.words={start_time:[],end_time:[],text:[]};m.current_words=clone(m.words);m.text_to_audio_ids=[];m.relevance_segment=[];
   segment.clip={scale:{x:p.scale,y:p.scale},rotation:0,transform:{x:-1+2*(p.marginLeft+w/2)/1920,y:-1+2*(p.marginBottom+h/2)/1080},flip:{horizontal:false,vertical:false},alpha:p.opacity};
   return m;
 }

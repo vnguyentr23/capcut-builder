@@ -25,7 +25,7 @@ async function confirmRemoval(title,note){
 }
 
 function setSetting(key,value){const parts=key.split('.');let obj=state.draft;for(const p of parts.slice(0,-1))obj=obj[p];obj[parts.at(-1)]=value;}
-function getSetting(key){const value=key.split('.').reduce((o,k)=>o?.[k],state.draft);return value??(key==='text.letterCase'?'original':value);}
+function getSetting(key){const value=key.split('.').reduce((o,k)=>o?.[k],state.draft);return value??(key==='text.letterCase'?'original':key==='text.prefix'?'':value);}
 function bodyCountText(){const d=state.draft,base=CCBBody.baseBody(d).length,extra=d.body.length-base;return `${base}/${d.target} gốc${extra?' + '+extra+' bù':''}`;}
 function shortFillStatus(){const d=state.draft,fill=d.shortClipFill,base=CCBBody.baseBody(d),extra=d.body.filter(c=>c.supplementFor),filled=new Set(extra.map(c=>c.supplementFor));const missing=fill?.enabled?base.filter(c=>displayRange(c.id).duration<fill.threshold&&!filled.has(c.id)).length:0;$('#shortFillStatus').textContent=fill?.enabled?`${extra.length} clip đã bù${missing?' · '+missing+' clip ngắn chưa được bù':''}. Bấm Tạo Body để áp dụng khi đổi thiết lập hoặc điểm cắt.`:'Đang tắt bù clip ngắn.';return missing;}
 function updateSummary(){if(!state)return;$('#footerMode').textContent=state.draft.mode==='capcut'?'Tạo project editable trong CapCut':'Bản kế hoạch · Không phải project CapCut';$('#footerSummary').textContent=`${state.draft.hook.length} Hook · ${bodyCountText()} · ${state.draft.body.length} clip Body · ${Object.keys(state.draft.assignments).length} nhạc đã khóa`;}
