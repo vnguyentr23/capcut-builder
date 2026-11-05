@@ -79,3 +79,21 @@ test('Source picker uses root originals and excludes generated remixes and other
   assert.deepEqual(remix.sourceProjects(store,child.id).map(p=>p.id).sort(),['imported','original']);
  }finally{store.close();}
 });
+test('Source collections grow once and each channel consumes saved additions independently',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ccb-source-update-')),store=new Store(':memory:');
+ try{
+  const root=store.create('Sources'),a=channels.create(store,root.id,'A'),b=channels.create(store,root.id,'B');
+  const source={id:uid(),rootId:root.id,channelId:root.id,name:'Shared',sources:[fixture(dir,1),fixture(dir,2)],projects:[],settings:defaults()};remix.save(store,source);
+  const first=await remix.create(store,{stateId:a.id,channelId:a.id,sourceBatchId:source.id,name:'First'});
+  const second=await remix.create(store,{stateId:b.id,channelId:b.id,sourceBatchId:source.id,name:'Second'});
+  const incoming=fixture(dir,3),folder=path.join(dir,'capcut');fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'draft_content.json'),JSON.stringify(incoming.draft));fs.writeFileSync(path.join(folder,'draft_meta_info.json'),'{}');
+  store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(incoming.id,root.id,'New','CREATED',folder,'now','{}');
+  await remix.addToSource(store,{id:source.id,stateId:a.id,sourceIds:[incoming.id]});
+  assert.equal(remix.sourceUpdate(store,first).newSources.length,1);assert.equal(remix.sourceUpdate(store,second).newSources.length,1);
+  fs.rmSync(folder,{recursive:true,force:true});
+  const result=await remix.updateFromSource(store,{id:first.id,stateId:a.id});
+  assert.equal(result.projects.length,3);assert.equal(remix.sourceUpdate(store,result).newSources.length,0);
+  assert.equal(remix.sourceUpdate(store,remix.get(store,second.id)).newSources.length,1);
+  await assert.rejects(remix.updateFromSource(store,{id:first.id,stateId:a.id}),/Không có video nguồn mới/);
+ }finally{store.close();fs.rmSync(dir,{recursive:true,force:true});}
+});

@@ -6,14 +6,14 @@ const norm=p=>path.resolve(p).replaceAll('\\','/').toLowerCase();
 const hash=x=>crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const read=p=>JSON.parse(fs.readFileSync(p,'utf8').replace(/^\uFEFF/,''));
 const engine=()=>import(pathToFileURL(path.join(__dirname,'remix/engine.mjs')).href);
-function list(store,id){const root=store.get(id).rootNicheId||id;return store.db.prepare('SELECT id,name,channel_id,updated,summary FROM remix_batches WHERE root_id=? ORDER BY updated DESC').all(root).map(r=>{const m=JSON.parse(r.summary);return {id:r.id,name:r.name,channelId:r.channel_id,count:m.count,sourceCount:m.sourceCount,created:m.created,updated:r.updated};});}
+function list(store,id){const root=store.get(id).rootNicheId||id;return store.db.prepare('SELECT id,name,channel_id,updated,summary FROM remix_batches WHERE root_id=? ORDER BY updated DESC').all(root).map(r=>{const m=JSON.parse(r.summary);return {id:r.id,name:r.name,channelId:r.channel_id,count:m.count,sourceCount:m.sourceCount,created:m.created,updated:r.updated,sourceBatchId:m.sourceBatchId,inputSourceIds:m.inputSourceIds||[],sourceIds:m.sourceIds||[]};});}
 const batchReadCache=new WeakMap();
 function readCached(store,id){let cache=batchReadCache.get(store);if(!cache){cache=new Map();batchReadCache.set(store,cache);}const meta=store.db.prepare('SELECT updated FROM remix_batches INDEXED BY remix_identity_updated WHERE id=?').get(id);if(!meta)throw Error('Không tìm thấy bộ dự án.');let entry=cache.get(id);if(!entry||entry.updated!==meta.updated){const r=store.db.prepare('SELECT data FROM remix_batches WHERE id=?').get(id);entry={updated:meta.updated,value:JSON.parse(r.data)};cache.clear();cache.set(id,entry);}return entry.value;}
 function get(store,id){const r=store.db.prepare('SELECT data FROM remix_batches WHERE id=?').get(id);if(!r)throw Error('Không tìm thấy bộ dự án.');return JSON.parse(r.data);}
 function mediaPath(store,id,projectId,unitId){const b=readCached(store,id),p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy bản nháp.');const units=[...(p.editor?.blocks||[]).flatMap(b=>b.units),...(p.editor?.ending?[p.editor.ending]:[])];return units.find(u=>u.id===unitId)?.path;}
 function musicPreview(store,id,projectId){const b=readCached(store,id),p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy bản nháp.');return {p,settings:require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings)};}
 
-function save(store,b){batchReadCache.get(store)?.delete(b.id);b.updated=new Date().toISOString();const summary={count:b.projects.length,sourceCount:b.sources.length,created:b.projects.filter(p=>p.installed).length,names:b.projects.map(p=>p.name),signatures:[...new Set([...(b.inheritedHistory||[]),...b.projects.map(p=>p.signature)])]};store.db.prepare('INSERT INTO remix_batches(id,root_id,channel_id,name,data,updated,summary) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated=excluded.updated,name=excluded.name,summary=excluded.summary').run(b.id,b.rootId,b.channelId,b.name,JSON.stringify(b),b.updated,JSON.stringify(summary));return b;}
+function save(store,b){batchReadCache.get(store)?.delete(b.id);b.updated=new Date().toISOString();const summary={count:b.projects.length,sourceCount:b.sources.length,created:b.projects.filter(p=>p.installed).length,names:b.projects.map(p=>p.name),sourceBatchId:b.sourceBatchId||null,inputSourceIds:b.inputSourceIds||b.sources.map(s=>s.id),sourceIds:b.sources.map(s=>s.id),signatures:[...new Set([...(b.inheritedHistory||[]),...b.projects.map(p=>p.signature)])]};store.db.prepare('INSERT INTO remix_batches(id,root_id,channel_id,name,data,updated,summary) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated=excluded.updated,name=excluded.name,summary=excluded.summary').run(b.id,b.rootId,b.channelId,b.name,JSON.stringify(b),b.updated,JSON.stringify(summary));return b;}
 function present(b){return {...b,sources:b.sources.map(s=>({id:s.id,name:s.name})),projects:b.projects.map(p=>({id:p.id,name:p.name,locked:p.locked,installed:p.installed,editedAt:p.editedAt,sourceName:p.sourceName,signature:p.signature,reusedPercent:p.reusedPercent,blocks:p.blocks,assignments:p.assignments,draft:{duration:p.draft.duration}})),assetManifest:!!b.assetManifest};}
 function sourceProjects(store,id){
  const root=store.get(id).rootNicheId||id;
@@ -79,6 +79,7 @@ async function create(store,{stateId,sourceIds,channelId,name,sourceBatchId,opti
  if(!target)throw Error('Chọn kênh đích thuộc ngách này.');
  const allowed=new Set(sourceProjects(store,stateId).map(p=>p.id));if(!sourceBatchId&&(!sourceIds?.length||sourceIds.some(id=>!allowed.has(id))))throw Error('Nguồn không thuộc ngách đang chọn.');
  const parent=sourceBatchId?get(store,sourceBatchId):null;if(parent&&parent.rootId!==root)throw Error('Bộ nguồn không thuộc ngách.');const sources=parent?sourcesFromBatch(parent):await capture(store,sourceIds),batch={id:uid(),rootId:root,channelId,name:String(name||'Bộ nhân bản').trim(),sources,projects:[],options:{mixHook:true,balance:true,...options},settings:structuredClone(store.get(channelId).draft),musicFolders:preferences(store,channelId).folders||{},inheritedHistory:allSignatures(store,root)};
+ if(parent&&!parent.projects.length){batch.sourceBatchId=parent.id;batch.inputSourceIds=parent.sources.map(s=>s.id);}
  await generate(store,batch,target.name==='Kênh gốc'?state.name:target.name);store.pref('remix-settings:'+channelId,JSON.stringify({...preferences(store,channelId),options:batch.options}));return save(store,batch);
 }
 async function generate(store,batch,prefix,onlyId=null,updating=false){
@@ -98,16 +99,16 @@ async function generate(store,batch,prefix,onlyId=null,updating=false){
  }
  return batch;
 }
-async function appendSources(store,{id,stateId,sourceIds}){
+async function appendSources(store,{id,stateId,sourceIds},savedSources=null,parentSourceId=null){
  const batch=get(store,id);
  if(batch.channelId!==stateId)throw Error('Bộ không thuộc kênh đang chọn.');
  if(!batch.projects.length)throw Error('Chọn bộ bản nháp cần bổ sung.');
  const allowed=new Set(sourceProjects(store,stateId).map(p=>p.id));
- if(!Array.isArray(sourceIds)||!sourceIds.length||sourceIds.some(id=>!allowed.has(id)))throw Error('Chọn các video nguồn thuộc ngách.');
+ if(!Array.isArray(sourceIds)||!sourceIds.length||(!savedSources&&sourceIds.some(id=>!allowed.has(id))))throw Error('Chọn các video nguồn thuộc ngách.');
  const previousIds=new Set([...(batch.inputSourceIds||[]),...batch.sources.map(s=>s.id)]);
  const addedIds=[...new Set(sourceIds)].filter(id=>!previousIds.has(id));
  if(!addedIds.length)throw Error('Các video được chọn đã có trong bộ.');
- const incoming=await capture(store,addedIds);
+ const incoming=savedSources?structuredClone(savedSources.filter(s=>addedIds.includes(s.id))):await capture(store,addedIds);
  const pending=batch.projects.filter(p=>!p.installed);
  const snapshots=sourcesFromBatch({...batch,projects:pending});
  const working={...batch,sources:[...snapshots,...incoming],projects:pending.map(p=>({...p,locked:false}))};
@@ -121,7 +122,39 @@ async function appendSources(store,{id,stateId,sourceIds}){
  if(batch.sources.some(s=>!s))throw Error('Bộ thiếu bản nguồn tương ứng. Chưa lưu thay đổi.');
  batch.projects=batch.projects.map(p=>replacements.get(p.id)||p).concat(working.projects.slice(pending.length));
  batch.inputSourceIds=[...new Set([...previousIds,...addedIds])];
+ if(parentSourceId)batch.sourceBatchId=parentSourceId;
  return save(store,batch);
+}
+async function addToSource(store,{id,stateId,sourceIds}){
+ const batch=get(store,id),root=store.get(stateId).rootNicheId||stateId;
+ if(batch.rootId!==root||batch.projects.length)throw Error('Chọn bộ nguồn trong ngách đang mở.');
+ const allowed=new Set(sourceProjects(store,stateId).map(p=>p.id));
+ if(!Array.isArray(sourceIds)||sourceIds.some(id=>!allowed.has(id)))throw Error('Chọn video gốc thuộc ngách.');
+ const added=[...new Set(sourceIds)].filter(id=>!batch.sources.some(s=>s.id===id));
+ if(!added.length)throw Error('Chưa chọn video mới để thêm vào bộ nguồn.');
+ const captured=await capture(store,added);
+ const checked=await analyzeSources(captured);
+ if(checked.some(s=>s.issues.length))throw Error(checked.flatMap(s=>s.issues).join('\n'));
+ batch.sources.push(...captured);
+ return save(store,batch);
+}
+function sourceUpdate(store,batch){
+ let source;
+ if(batch.sourceBatchId){try{source=get(store,batch.sourceBatchId);}catch{return null;}}
+ else{
+  const ids=batch.inputSourceIds||batch.sources.map(s=>s.id);
+  const candidates=store.db.prepare("SELECT data FROM remix_batches WHERE root_id=? AND json_extract(summary,'$.count')=0").all(batch.rootId).map(r=>JSON.parse(r.data)).filter(b=>!b.projects.length&&ids.length&&ids.every(id=>b.sources.some(s=>s.id===id)));
+  if(candidates.length===1)source=candidates[0];
+ }
+ if(!source||source.rootId!==batch.rootId||source.projects.length)return null;
+ const consumed=new Set(batch.inputSourceIds||batch.sources.map(s=>s.id));
+ return {source,newSources:source.sources.filter(s=>!consumed.has(s.id))};
+}
+async function updateFromSource(store,{id,stateId}){
+ const batch=get(store,id),update=sourceUpdate(store,batch);
+ if(!update?.newSources.length)throw Error('Không có video nguồn mới hoặc bộ nguồn chưa được liên kết.');
+ const result=await appendSources(store,{id,stateId,sourceIds:update.newSources.map(s=>s.id)},update.newSources,update.source.id);
+ return result;
 }
 async function reroll(store,id,projectId){const b=get(store,id),p=b.projects.find(p=>p.id===projectId);if(!p||p.locked||p.installed)throw Error('Dự án đã khóa hoặc đã tạo CapCut.');const target=store.get(b.channelId);await generate(store,b,target.channelName==='Kênh gốc'?target.name:target.channelName,projectId);return save(store,b);}
 function lock(store,id,projectId){const b=get(store,id),p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy dự án.');p.locked=!p.locked;return save(store,b);}
@@ -200,4 +233,4 @@ function removeBatch(store,{id,stateId}){
  }catch(e){store.db.exec('ROLLBACK');throw e;}
  return true;
 }
-module.exports={appendSources,mediaPath,musicPreview,prepare,removeBatch,present,saveSource,sourcesFromBatch,preferences,list,get,save,sourceProjects,analyzeSources,mix,capture,create,reroll,lock,assignMusic,withMusic,check,install,allSignatures};
+module.exports={addToSource,sourceUpdate,updateFromSource,appendSources,mediaPath,musicPreview,prepare,removeBatch,present,saveSource,sourcesFromBatch,preferences,list,get,save,sourceProjects,analyzeSources,mix,capture,create,reroll,lock,assignMusic,withMusic,check,install,allSignatures};
