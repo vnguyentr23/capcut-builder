@@ -239,7 +239,18 @@ function renderMusic(){
 }
 function renderHistory(){
   if(!$('#history').closest('details').open)return;
-  $('#history').innerHTML=history.length?history.map(p=>`<div class="historyRow"><strong>${esc(p.name)}</strong><span class="badge ${p.status==='CREATED'?'green':'warn'}">${p.status==='REMIX_CREATED'?'Đã tạo (nhân bản)':p.status==='IMPORTED'?'Đã nhập CapCut':p.status==='CREATED'?'Đã tạo CapCut':p.status==='DRAFT'?'Bản nháp':'Bản kế hoạch'}</span><small>${esc(new Date(p.created_at).toLocaleString('vi-VN'))}</small>${['IMPORTED','REMIX_CREATED'].includes(p.status)?`<span class="badge" title="${esc(p.path)}">Chỉnh sửa trong CapCut</span>`:`<button data-restore="${esc(p.id)}">Mở bản lưu</button>`}</div>`).join(''):'<p class="hint">Chưa có dự án. Lưu manifest hoặc tạo draft mới sẽ giữ footage trong lịch sử để Body sau tránh dùng lại.</p>';
+  const host=$('#history'),opened=new Set([...host.querySelectorAll('details[open]')].map(el=>el.dataset.historyGroup));
+  const groups=new Map();
+  for(const entry of history){
+    const key=entry.name.trim().replace(/[_\s]+/g,' ').toLocaleLowerCase();
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key).push(entry);
+  }
+  host.innerHTML=groups.size?[...groups].map(([key,entries])=>{
+    const latest=entries[0],created=entries.filter(p=>['CREATED','REMIX_CREATED'].includes(p.status)).length;
+    const rows=entries.map(p=>`<div class="historyRow"><strong>${esc(p.name)}</strong><span class="badge ${p.status==='CREATED'?'green':'warn'}">${p.status==='REMIX_CREATED'?'Đã tạo (nhân bản)':p.status==='IMPORTED'?'Đã nhập CapCut':p.status==='CREATED'?'Đã tạo CapCut':p.status==='DRAFT'?'Bản nháp':'Bản kế hoạch'}</span><small>${esc(new Date(p.created_at).toLocaleString('vi-VN'))}</small>${['IMPORTED','REMIX_CREATED'].includes(p.status)?`<span class="badge" title="${esc(p.path)}">Chỉnh sửa trong CapCut</span>`:`<button data-restore="${esc(p.id)}">Mở bản lưu</button>`}</div>`).join('');
+    return `<details class="historyProject" data-history-group="${esc(key)}" ${opened.has(key)?'open':''}><summary><strong>${esc(latest.name)}</strong><small>${entries.length} lần lưu · ${created} lần tạo CapCut</small></summary><div class="historyVersions">${rows}</div></details>`;
+  }).join(''):'<p class="hint">Chưa có lịch sử dự án.</p>';
   $('#history').querySelectorAll('[data-restore]').forEach(b=>b.onclick=()=>run('Mở bản lưu…',async()=>{accept(await api('restore',{state,projectId:b.dataset.restore}));toast('Đã mở bản lưu. Tự sửa tên nếu muốn tạo một bản khác.');}));
 }
 function showChecks(result){$('#checkPanel').hidden=false;$('#checkCount').textContent=result.ok?'Có thể tạo bản kế hoạch':'Cần xử lý lỗi trước khi tạo';$('#checks').innerHTML=result.checks.map(c=>`<div class="checkRow ${c.level}">${c.level==='error'?'✕':c.level==='warning'?'△':'✓'} ${esc(c.text)}</div>`).join('');$('#checkPanel').scrollTop=0;}

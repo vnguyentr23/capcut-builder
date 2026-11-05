@@ -286,3 +286,8 @@ body.bodyExpanded #bodyPreview{grid-template-columns:repeat(auto-fill,minmax(min
 #bodyPager:empty{display:none}
 
 #busy{z-index:10000!important;position:fixed;top:0;left:0;right:0;min-height:38px;background:#223c34;border-bottom:1px solid #86d8bf;box-shadow:0 4px 18px #0008}
+.historyProject{margin-bottom:8px}
+.historyProject summary strong{font-size:12px;overflow-wrap:anywhere}
+.historyProject summary small{display:block;margin-top:5px;color:var(--muted);font-size:11px;font-weight:400}
+.historyVersions{padding:0 10px}
+.historyVersions .historyRow:last-child{border-bottom:0}
