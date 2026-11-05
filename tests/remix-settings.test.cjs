@@ -8,7 +8,7 @@ test('Settings reject invalid numbers and missing CapCut packages',()=>{const s=
 test('Batch settings persist for pending drafts only; stale update rejected and source remains unchanged',()=>{
  const {Store}=require('../src/store.cjs'),store=new Store(':memory:');try{const s=store.create('N'),a=fixture(),b=fixture();a.id='a';b.id='b';b.installed='existing-capcut';const batch={id:'batch',rootId:s.id,channelId:s.id,name:'B',projects:[a,b],sources:[{source:'untouched'}],settings:{}};remix.save(store,batch);const old=JSON.stringify(b),info=settings.batchSettings(store,batch.id),value=settings.initial();value.audioVolumeDb=-22;
  assert.throws(()=>settings.applyBatch(store,{id:batch.id,updated:'stale',settings:value}),/thay đổi/);
- const result=settings.applyBatch(store,{id:batch.id,updated:info.updated,settings:value});assert.deepEqual(result,{count:1,skipped:1});const saved=remix.get(store,batch.id);assert.equal(saved.projects[0].settings.audioVolumeDb,-22);assert.equal(JSON.stringify(saved.projects[1]),old);assert.deepEqual(saved.sources,batch.sources);assert.equal(saved.renderSettings.audioVolumeDb,-22);
+ const result=settings.applyBatch(store,{id:batch.id,updated:info.updated,settings:value,backgroundColor:'#333333'});assert.equal(store.get(batch.channelId).videoBackgroundColor,'#333333');assert.deepEqual(result,{count:1,skipped:1});const saved=remix.get(store,batch.id);assert.equal(saved.projects[0].settings.audioVolumeDb,-22);assert.equal(JSON.stringify(saved.projects[1]),old);assert.deepEqual(saved.sources,batch.sources);assert.equal(saved.renderSettings.audioVolumeDb,-22);
  }finally{store.close();}
 });
 

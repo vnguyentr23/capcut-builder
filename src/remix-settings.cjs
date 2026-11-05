@@ -44,13 +44,13 @@ function apply(project,d,s){
  require('./end-effect.cjs').append(d,require('./end-effect.cjs').timing(s.endEffect,d.duration/1e6),uid);return d;
 }
 function batchSettings(store,id){const b=require('./remix.cjs').get(store,id);return {settings:effective({},b.renderSettings||initial(b.settings)),updated:b.updated,count:b.projects.filter(p=>!p.installed).length,installed:b.projects.filter(p=>p.installed).length};}
-function applyBatch(store,{id,settings,updated}){
+function applyBatch(store,{id,settings,updated,backgroundColor}){
  const remix=require('./remix.cjs'),b=remix.get(store,id);if(updated!==b.updated)throw Error('Bộ đã thay đổi. Mở lại thiết lập để áp dụng.');validate(settings);
  const pending=b.projects.filter(p=>!p.installed);if(!pending.length)throw Error('Không còn bản nháp chưa tạo CapCut.');
  for(const p of pending){
   if(p.editor){(p.editUndo??=[]).push({editor:structuredClone(p.editor),name:p.name,assignments:structuredClone(p.assignments),settings:structuredClone(p.settings||initial(b.settings))});p.editUndo=p.editUndo.slice(-5);p.editor.revision++;}
   p.settings=structuredClone(settings);p.assignments=require('./remix-timing.cjs').assignments(p,settings);p.editedAt=new Date().toISOString();
  }
- b.renderSettings=structuredClone(settings);remix.save(store,b);return {count:pending.length,skipped:b.projects.length-pending.length};
+ b.renderSettings=structuredClone(settings);remix.save(store,b);if(backgroundColor!==undefined){const channel=store.get(b.channelId);channel.videoBackgroundColor=backgroundColor;store.save(channel);}return {count:pending.length,skipped:b.projects.length-pending.length};
 }
 module.exports={effective,initial,validate,apply,batchSettings,applyBatch};

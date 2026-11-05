@@ -50,3 +50,18 @@ body.remixDraftMode main{grid-template-rows:minmax(0,1fr)}
 #remixCreateDialog details{padding:12px;border:1px solid #303844;border-radius:8px}
 #remixCreateDialog details label{margin-top:10px}
 #remixCreateContext{overflow-wrap:anywhere}
+
+#rxSettingsDialog{width:min(1280px,96vw);max-width:1280px;height:min(880px,94vh);max-height:94vh;box-sizing:border-box;padding:20px;overflow:hidden}
+#rxSettingsDialog[open]{display:flex;flex-direction:column;gap:10px}
+#rxSettingsDialog>.sectionHead{flex:none;margin:0}#rxSettingsDialog>p.hint{flex:none;margin:0;font-size:12px;line-height:1.5}
+.rxSettingsGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;overflow:auto;min-height:0;padding:2px 5px 8px 0;flex:1}
+#rxSettingsDialog .rxSettingPanel{background:#171d24;border:1px solid #323b46;border-radius:9px;padding:14px;min-width:0}
+#rxSettingsDialog .rxSettingPanel h3{font-size:13px;margin:0 0 12px;color:#eef4fa}
+#rxSettingsDialog .rxSettingPanel.creditSettings{grid-column:3;grid-row:1/span 3}
+#rxSettingsDialog .rxFields{gap:10px;margin:10px 0 0;grid-template-columns:repeat(2,minmax(0,1fr))}
+#rxSettingsDialog label{font-size:11px;min-width:0}#rxSettingsDialog input:not([type=checkbox]):not([type=range]),#rxSettingsDialog select{height:31px;box-sizing:border-box;min-width:0;width:100%;margin:5px 0 0;padding:4px 7px}
+#rxSettingsDialog .check{display:flex;align-items:center;gap:7px;margin:6px 0}#rxSettingsDialog input[type=checkbox]{width:14px;height:14px;margin:0}
+#rxSettingsDialog small{display:block;color:#93a3b6;font-size:11px;margin-top:9px}#rxIntroName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;font-size:11px;color:#9baec2}
+#rxSettingsDialog .rxSettingsFooter{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #323b46;padding-top:12px;flex:none}#rxSettingsError{margin:0;flex:1}#rxSettingsApply{flex-shrink:0}
+@media(max-width:1050px){.rxSettingsGrid{grid-template-columns:repeat(2,minmax(0,1fr))}#rxSettingsDialog .rxSettingPanel.creditSettings{grid-column:2;grid-row:1/span 3}}
+@media(max-width:680px){.rxSettingsGrid{grid-template-columns:1fr}#rxSettingsDialog .rxSettingPanel.creditSettings{grid-column:auto;grid-row:auto}}
