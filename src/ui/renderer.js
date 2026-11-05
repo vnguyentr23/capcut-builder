@@ -39,7 +39,7 @@ $('#previewScale').oninput=e=>{state.previewScale=Number(e.target.value);applyPr
 function applyBodyVisibility(){const hidden=!!state.bodyHidden;$('#bodyPanel').hidden=hidden;$('.editingDeck').classList.toggle('bodyHidden',hidden);$('#toggleBody').textContent=hidden?'Hiện Hook & Body':'Ẩn Hook & Body';$('#toggleBody').setAttribute('aria-expanded',String(!hidden));}
 $('#toggleBody').onclick=()=>{state.bodyHidden=!state.bodyHidden;applyBodyVisibility();changed();};
 function render(){
-  applyPreviewScale();applyBodyVisibility();window.renderChannels?.();
+  $('#channelBackground').value=state.videoBackgroundColor||'#000000';applyPreviewScale();applyBodyVisibility();window.renderChannels?.();
   $('#niche').innerHTML=niches.map(n=>`<option value="${esc(n.id)}">${esc(n.name)}</option>`).join('');$('#niche').value=state.rootNicheId||state.id;$('#settingsNiche').textContent='Ngách: '+state.name;
   $('#projectName').value=state.draft.name;$('#target').value=state.draft.target;
   if(document.body.classList.contains('remixMode')){stopFootage();$('#groups').querySelectorAll('.pool').forEach(p=>p._resizeObserver?.disconnect());thumbObserver.disconnect();return;}
@@ -365,6 +365,7 @@ $('#newNiche').onclick=async()=>{const name=await ask('Tạo ngách mới','','M
 $('#renameNiche').onclick=async()=>{const name=await ask('Đổi tên ngách',state.name);if(name?.trim()){state.name=name.trim();niches.find(n=>n.id===state.id).name=state.name;changed();render();}};
 $('#projectName').oninput=e=>{state.draft.name=e.target.value;state.draft.autoName=false;changed();};
 $('#fixName').onclick=()=>run('Kiểm tra tên…',async()=>{state.draft.name=await api('fixName',state);await save();$('#projectName').value=state.draft.name;toast('Đã sửa ký tự và tránh tên trùng.');});
+$('#channelBackground').oninput=e=>{state.videoBackgroundColor=e.target.value;changed();};
 $('#newDraft').onclick=()=>run('Tạo draft mới…',async()=>{accept(await api('newDraft',state));toast('Đã tạo draft trống, giữ thiết lập của ngách.');});
 $('#pickParent').onclick=async()=>{const folder=await api('choose','folder');if(folder){state.parent=folder;changed();$('#parentPath').textContent=folder;}};
 $('#importParent').onclick=()=>run('Đọc thư mục cha…',async()=>{if(!state.parent)throw Error('Hãy chọn thư mục cha trước.');accept(await api('importParent',state));toast('Đã đọc các nhóm con.');});
@@ -381,7 +382,7 @@ $('#introPosition').onchange=e=>{state.draft.introPosition=e.target.value;$('#in
 $('#introAfter').oninput=e=>{state.draft.introAfterBlocks=Number(e.target.value);changed();};
 $('#musicAudioMode').onchange=e=>{state.draft.musicAudioMode=e.target.value;changed();};
 for(const id of ['hookDelay','fade','audioVolumeDb'])$('#'+id).oninput=e=>{state.draft[id]=Number(e.target.value);changed();};
-document.querySelectorAll('[data-setting]').forEach(e=>e.addEventListener('input',()=>{setSetting(e.dataset.setting,e.type==='checkbox'?e.checked:e.type==='number'?Number(e.value)/(e.dataset.percent?100:1):e.value);changed();if(e.dataset.setting==='pinPriority')renderGroups();if(e.dataset.setting==='transition.type')renderLocalTransitions();if(['transition.type','blockSize','shortClipFill.enabled','shortClipFill.threshold'].includes(e.dataset.setting))renderBody();if(e.dataset.setting==='blockSize')renderMusic();}));
+document.querySelectorAll('[data-setting]').forEach(e=>e.addEventListener('input',()=>{setSetting(e.dataset.setting,e.type==='checkbox'?e.checked:['number','range'].includes(e.type)?Number(e.value)/(e.dataset.percent?100:1):e.value);document.querySelectorAll('[data-setting]').forEach(other=>{if(other!==e&&other.dataset.setting===e.dataset.setting)other.value=e.value;});changed();if(e.dataset.setting==='pinPriority')renderGroups();if(e.dataset.setting==='transition.type')renderLocalTransitions();if(['transition.type','blockSize','shortClipFill.enabled','shortClipFill.threshold'].includes(e.dataset.setting))renderBody();if(e.dataset.setting==='blockSize')renderMusic();}));
 $('#fillMusic').onclick=()=>run('Gán nhạc còn thiếu…',async()=>{accept(await api('music',{state,rerandom:false}));toast('Nhạc đã được gán và khóa theo draft.');});
 $('#randomMusic').onclick=()=>run('Đang random lại nhạc…',async()=>{accept(await api('music',{state,rerandom:true}));toast('Đã random lại tất cả nhạc.');});
 $('#endDuration').oninput=e=>{if(state.draft.end?.kind==='image'){state.draft.end.duration=Number(e.target.value);changed();renderBody();}};

@@ -6,7 +6,7 @@ function defaults() {
   return {id:uid(), name:'Dự án mới', target:58, pinPriority:true, spreadScarce:true, pattern:[], hook:[], body:[], intro:null, end:null,
     introPosition:'afterHook', introAfterBlocks:1, blockSize:3, blockVersion:1, shortClipFill:{enabled:false,threshold:5}, music:{hook:'',body:'',end:''}, assignments:{},
     endEffect:{enabled:false,duration:3,resource:null}, transition:{type:'none',duration:0.35}, vertical:{scale:1.4},
-    text:{font:'Arial',size:15,scale:0.2,marginLeft:50,marginBottom:50,color:'#ffffff',opacity:1,stroke:2,strokeColor:'#000000',shadow:true,alignment:'left'},
+    text:{bold:false,italic:false,underline:false,letterCase:'original',font:'Arial',size:15,scale:0.2,marginLeft:50,marginBottom:50,color:'#ffffff',opacity:1,stroke:2,strokeColor:'#000000',shadow:true,alignment:'left'},
     hookDelay:3, fade:4, destination:'', mode:'capcut', ducking:require('./ducking.cjs').defaults(),audioVolumeDb:-10,musicAudioMode:'removeVocals',presetVersion:3,writerVersion:1,musicVersion:3};
 }
 function migratePresets(draft){
@@ -38,6 +38,7 @@ function migratePresets(draft){
     draft.text={...defaults().text,...draft.text,size:15,scale:0.2,marginLeft:50,marginRight:50};
     delete draft.audioVolume;draft.audioVolumeDb=-10;
   }
+  draft.text.bold??=false;draft.text.italic??=false;draft.text.underline??=false;draft.text.letterCase??='original';
   draft.text.marginBottom=draft.text.marginBottom??draft.text.marginRight??50;
   draft.text.marginLeft=draft.text.marginLeft??50;
   draft.text.alignment='left';
@@ -151,7 +152,7 @@ function assignMusic(draft,tl,pools,rerandom=false) {
 }
 function manifest(draft,niche,media) {
   const tl=timeline(draft,media);
-  return {format:'ccb-manifest',version:1,mode:'dry-run',capcutCompatible:false,projectId:draft.id,name:draft.name,nicheId:niche.id,nicheName:niche.name,
+  return {format:'ccb-manifest',version:1,mode:'dry-run',capcutCompatible:false,projectId:draft.id,name:draft.name,nicheId:niche.id,nicheName:niche.name,backgroundColor:niche.videoBackgroundColor||'#000000',
     endEffect:require('./end-effect.cjs').timing(draft.endEffect,tl.duration),
     canvas:{width:1920,height:1080,fps:30},timeUnit:'seconds',...tl,
     audio:musicSlots(draft,tl).flatMap(s=>{

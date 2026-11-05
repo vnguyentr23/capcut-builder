@@ -27,12 +27,13 @@ function makeText(c,segment){
   // XAO_VIDEO's calibrated text geometry: font size 15 / scale 0.2 = 33.333 px per em.
   const em=p.size*p.scale*(100/9),maxWidth=1920-p.marginLeft;
   const width=s=>font.layout(s).positions.reduce((n,x)=>n+x.xAdvance,0)/font.unitsPerEm*em;
-  const lines=[];for(const raw of c.source.split('\n')){let line='';for(const ch of raw){if(line&&width(line+ch)>maxWidth){lines.push(line);line='';}line+=ch;}lines.push(line);}
+  const source=p.letterCase==='upper'?c.source.toLocaleUpperCase():p.letterCase==='lower'?c.source.toLocaleLowerCase():p.letterCase==='title'?c.source.toLocaleLowerCase().replace(/(^|[^\p{L}\p{N}])(\p{L})/gu,(_,a,b)=>a+b.toLocaleUpperCase()):c.source;
+  const lines=[];for(const raw of source.split('\n')){let line='';for(const ch of raw){if(line&&width(line+ch)>maxWidth){lines.push(line);line='';}line+=ch;}lines.push(line);}
   const text=lines.join('\n'),w=Math.max(...lines.map(width)),h=em*(1+(lines.length-1)*1.2);
   if(h>1080-p.marginBottom)throw Error('Credit quá dài để đặt trong khung hình: '+path.basename(c.path));
   const m=clone(template.textMaterial);Object.assign(m,{id:uid(),font_path:slash(fontPath),font_name:p.font,font_size:p.size,text_color:p.color,text_alpha:1,alignment:0,border_color:p.strokeColor,border_width:p.stroke/100,has_shadow:!!p.shadow,shadow_alpha:p.shadow?0.9:0,shadow_color:'#000000',shadow_distance:p.shadow?5:0});
   const rgb=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255);
-  const style={fill:{content:{render_type:'solid',solid:{color:rgb(p.color)}}},font:{path:slash(fontPath),id:''},size:p.size,range:[0,text.length]};
+  const style={fill:{content:{render_type:'solid',solid:{color:rgb(p.color)}}},font:{path:slash(fontPath),id:''},size:p.size,bold:!!p.bold,italic:!!p.italic,underline:!!p.underline,range:[0,text.length]};
   if(p.stroke>0)style.strokes=[{content:{render_type:'solid',solid:{color:rgb(p.strokeColor)}},width:p.stroke/100}];
   m.content=JSON.stringify({text,styles:[style]});m.words={start_time:[],end_time:[],text:[]};m.current_words=clone(m.words);m.text_to_audio_ids=[];m.relevance_segment=[];
   segment.clip={scale:{x:p.scale,y:p.scale},rotation:0,transform:{x:-1+2*(p.marginLeft+w/2)/1920,y:-1+2*(p.marginBottom+h/2)/1080},flip:{horizontal:false,vertical:false},alpha:p.opacity};
@@ -80,7 +81,7 @@ function build(manifest,catalog=[]){
     const m={id:uid(),type:'transition',name:r.name,effect_id:r.effectId,resource_id:r.resourceId||r.effectId,third_resource_id:'0',source_platform:1,path:slash(r.path),duration:us(t.duration),is_overlap:true,platform:'all',category_id:'100000',category_name:'',request_id:'',is_ai_transition:false,video_path:'',task_id:''};
     (d.materials.transitions||=[]).push(m);byKey.get(t.after).extra_material_refs.push(m.id);
   }
-  d.tracks=[...Object.values(tracks),originalAudio].filter(t=>t.segments.length);require('./end-effect.cjs').append(d,require('./end-effect.cjs').timing(manifest.draft.endEffect,manifest.duration),uid);validate(d);return d;
+  d.tracks=[...Object.values(tracks),originalAudio].filter(t=>t.segments.length);require('./end-effect.cjs').append(d,require('./end-effect.cjs').timing(manifest.draft.endEffect,manifest.duration),uid);require('./canvas-background.cjs').apply(d,manifest.backgroundColor);validate(d);return d;
 }
 function validate(d){
   const ids=new Set(),materials=new Map();for(const a of Object.values(d.materials))for(const m of a){if(!m.id||ids.has(m.id))throw Error('ID material trùng.');ids.add(m.id);materials.set(m.id,m);}

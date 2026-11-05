@@ -221,7 +221,7 @@ async function install(store,id,adapter,progress=()=>{},projectId=null){
  const writer=require('./capcut-writer.cjs');if(await writer.isRunning())throw Error('Lưu và đóng CapCut trước khi tạo bộ dự án.');
  const names=new Set(detected.existingNames.map(n=>n.toLowerCase()));for(const p of selected.filter(p=>!p.installed))if(names.has(p.name.toLowerCase()))throw Error('Tên đã tồn tại trong CapCut: '+p.name);
  for(const [index,p] of selected.entries())if(!p.installed){
-  const draft=await prepare(p,b.renderSettings||b.settings,{progress,store});writer.validate(draft);
+  const draft=await prepare(p,b.renderSettings||b.settings,{progress,store});require('./canvas-background.cjs').apply(draft,store.get(b.channelId).videoBackgroundColor||'#000000');writer.validate(draft);
   const manifest={name:p.name,remixBatchId:b.id,draft:{...defaults(),name:p.name},clips:p.blocks.flatMap(bl=>bl.clips.map(c=>({...c,role:bl.hook?'hook':'body'})))};
   const result=await writer.install(manifest,detected.destination,[],writer.isRunning,draft);
   p.installed=result.path;p.locked=true;
