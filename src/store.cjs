@@ -41,6 +41,8 @@ class Store {
       for(const scope of scopes)this.db.prepare('DELETE FROM niches WHERE id=?').run(scope);this.db.prepare('DELETE FROM channels WHERE root_id=?').run(id);this.db.prepare('DELETE FROM remix_batches WHERE root_id=?').run(id);this.db.exec('COMMIT');
     }catch(e){this.db.exec('ROLLBACK');throw e;}
   }
+  canNewDraft(s){return !!this.db.prepare("SELECT 1 FROM projects WHERE niche_id=? AND status='CREATED' AND (json_extract(snapshot,'$.draft.id')=? OR json_extract(snapshot,'$.projectId')=?) LIMIT 1").get(s.id,s.draft.id,s.draft.id);}
+  requireCreatedDraft(s){if(!this.canNewDraft(s))throw Error('Hãy tạo dự án CapCut thành công trước khi tạo dự án mới.');}
   nameDraft(s,exists=()=>false){
     const base=fixName(s.channelName&&s.channelName!=='Kênh gốc'?s.channelName:s.name).slice(0,85),rows=this.db.prepare('SELECT name,snapshot FROM projects WHERE niche_id=?').all(s.id);
     let number=Math.max(0,s.projectCounter||0);

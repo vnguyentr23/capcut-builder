@@ -30,7 +30,7 @@ app.whenReady().then(async()=>{
   let current=store.pref('active')||store.list()[0]?.id;
   if(!current)current=store.create('Ngách đầu tiên').id;
   const hydrate=s=>{const map=store.hydrate(s);for(const [id,m] of map)if(s.sources&&Object.hasOwn(s.sources,id))map.set(id,{...m,source:s.sources[id]});return map;};
-  function view(s){return {channels:channels.list(store,s.id),effectCatalog:JSON.parse(store.pref('effectCatalog')||'[]'),transitionCatalog:JSON.parse(store.pref('transitionCatalog')||'[]'),state:s,media:[...hydrate(s).values()],used:[...store.blocked(s.id,s.draft.id)],history:store.history(s.id),niches:store.list(),output};}
+  function view(s){return {canNewDraft:store.canNewDraft(s),channels:channels.list(store,s.id),effectCatalog:JSON.parse(store.pref('effectCatalog')||'[]'),transitionCatalog:JSON.parse(store.pref('transitionCatalog')||'[]'),state:s,media:[...hydrate(s).values()],used:[...store.blocked(s.id,s.draft.id)],history:store.history(s.id),niches:store.list(),output};}
   async function prepareOrder(s){
     const map=hydrate(s),pending=[...map.values()].filter(m=>m.createdAt===undefined);let cursor=0;
     await Promise.all(Array.from({length:Math.min(16,pending.length)},async()=>{while(cursor<pending.length){const m=pending[cursor++];try{m.createdAt=(await fs.promises.stat(m.path)).birthtimeMs;store.putMedia({...store.media(m.id),createdAt:m.createdAt});}catch{m.createdAt=0;}}}));
@@ -172,7 +172,7 @@ app.whenReady().then(async()=>{
       store.record(s,result.path,m,result);return {check,result,view:view(s)};
     },
     fixName:async(s)=>{const detection=await adapter.detect(s.draft.destination),names=new Set(detection.existingNames.map(n=>n.toLocaleLowerCase()));return domain.fixName(s.draft.name,name=>names.has(name.toLocaleLowerCase())||fs.existsSync(path.join(output,name))||store.history(s.id).some(p=>p.name.toLocaleLowerCase()===name.toLocaleLowerCase()));},
-    newDraft:async(s)=>{store.archiveDraft(s);const d=structuredClone(s.draft);Object.assign(d,{id:domain.uid(),hook:[],body:[],end:null,excluded:[],assignments:{},pinOrder:[]});s.draft=d;for(const group of s.groups)group.pinned=[];const detection=await adapter.detect(s.draft.destination),names=new Set(detection.existingNames.map(n=>n.toLocaleLowerCase()));store.nameDraft(s,n=>names.has(n.toLocaleLowerCase())||fs.existsSync(path.join(output,n)));store.save(s);return view(s);},
+    newDraft:async(s)=>{store.requireCreatedDraft(s);const d=structuredClone(s.draft);Object.assign(d,{id:domain.uid(),hook:[],body:[],end:null,excluded:[],assignments:{},pinOrder:[]});s.draft=d;for(const group of s.groups)group.pinned=[];const detection=await adapter.detect(s.draft.destination),names=new Set(detection.existingNames.map(n=>n.toLocaleLowerCase()));store.nameDraft(s,n=>names.has(n.toLocaleLowerCase())||fs.existsSync(path.join(output,n)));store.save(s);return view(s);},
     preview:async(id)=>{const m=store.media(id);if(!m||!fs.existsSync(m.path))throw Error('File không tồn tại.');previewTokens.clear();const token=domain.uid();previewTokens.set(token,m.path);return {url:'ccb-media://'+token+'/video',name:m.name};},
     previewExternal:async(id)=>{const m=store.media(id);if(!m||!fs.existsSync(m.path))throw Error('File không tồn tại.');const error=await shell.openPath(m.path);if(error)throw Error(error);},
     openOutput:async()=>shell.openPath(store.pref('lastOutput')||output),
