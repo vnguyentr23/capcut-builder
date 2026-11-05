@@ -31,7 +31,7 @@ async function loadRemix(){
  const activeChannel=remixData.channels.find(c=>c.id===context);contextLabel.textContent='Bộ đã lưu · '+state.name+' · '+(activeChannel?.name||'Kênh gốc');
  const visibleBatches=remixData.batches.filter(b=>!b.count||b.channelId===context);
 
- await loadTargetSettings();
+
  $('#remixSources').innerHTML=remixData.sources.map(p=>`<label class="remixSource"><input type="checkbox" value="${esc(p.id)}"><span>${esc(p.name)}<small>${esc(p.channel)}</small></span></label>`).join('')||'<p class="muted">Chưa có dự án CapCut trong lịch sử. Có thể nhập gói nhân bản từ máy khác.</p>';
  if(remixBatch&&!visibleBatches.some(b=>b.id===remixBatch.id))remixBatch=null;
  $('#remixBatches').innerHTML=['source','draft'].map(kind=>{
@@ -45,11 +45,28 @@ async function loadRemix(){
 $('#remixSelectAll').onclick=()=>$('#remixSources').querySelectorAll('input').forEach(x=>x.checked=true);
 $('#remixSelectNone').onclick=()=>$('#remixSources').querySelectorAll('input').forEach(x=>x.checked=false);
 
-async function createRemix(fromBatch=false){await run('Trộn footage và dựng bản xem trước…',async()=>{
- const b=await api('remixCreate',{stateId:state.id,sourceIds:[...$('#remixSources').querySelectorAll('input:checked')].map(x=>x.value),sourceBatchId:fromBatch?remixBatch?.id:null,channelId:state.id,name:$('#remixName').value||'Bộ nhân bản',options:{mixHook:$('#mixHook').checked,balance:$('#balanceBlocks').checked}});
- if(state.id!==b.channelId)accept(await api('channelSwitch',b.channelId));remixContext=state.id;remixBatch=b;await loadRemix();toast('Đã lưu bản nháp. Chọn Chỉnh sửa để hoàn thiện từng video trước khi tạo CapCut.');
-});}
-$('#remixFromBatch').onclick=()=>createRemix(true);
+$('#remixFromBatch').onclick=async()=>{
+ if(busy||!remixBatch||remixBatch.projects.length)return;
+ const sourceId=remixBatch.id,channelId=state.id;
+ try{
+  await loadTargetSettings();
+  if(state.id!==channelId||remixBatch?.id!==sourceId)return;
+  const dialog=$('#remixCreateDialog');
+  $('#remixName').value=remixBatch.name+' · '+(state.channelName==='Kênh gốc'?state.name:state.channelName);
+  $('#remixCreateContext').textContent='Nguồn: '+remixBatch.name+' · Kênh: '+(state.channelName||state.name);
+  dialog.returnValue='';
+  dialog.onclose=()=>{
+   if(dialog.returnValue!=='create')return;
+   const name=$('#remixName').value.trim();
+   if(!name){toast('Hãy nhập tên bộ nhân bản.',true);return;}
+   run('Tạo bộ nhân bản…',async()=>{
+    remixBatch=await api('remixCreate',{stateId:channelId,sourceBatchId:sourceId,channelId,name,options:{mixHook:$('#mixHook').checked,balance:$('#balanceBlocks').checked}});
+    await loadRemix();toast('Đã tạo bộ bản nháp. Chọn Chỉnh sửa để hoàn thiện từng video.');
+   });
+  };
+  dialog.showModal();$('#remixName').focus();$('#remixName').select();
+ }catch(e){toast(e.message,true);}
+};
 function renderRemix(){
  $('#remixBatches').querySelectorAll('[data-batch]').forEach(button=>{const active=button.dataset.batch===remixBatch?.id;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));});
 
@@ -85,4 +102,14 @@ $('#remixRelink').onclick=()=>run('Đối chiếu lại file…',async()=>{const
 async function loadTargetSettings(){const p=await api('remixSettings',state.id);const opts={mixHook:true,splitNine:true,balance:true,dangerLimit:false,...p.options};for(const [id,key] of [['mixHook','mixHook'],['balanceBlocks','balance']])$('#'+id).checked=opts[key];}
 
 
-$('#remixSaveSource').onclick=()=>run('Lưu bộ nguồn…',async()=>{remixBatch=await api('remixSaveSource',{stateId:state.id,sourceIds:[...$('#remixSources').querySelectorAll('input:checked')].map(x=>x.value),name:$('#remixName').value||'Bộ nguồn'});await loadRemix();toast('Đã lưu bộ nguồn; có thể xuất sang máy khác.');});
+$('#remixSaveSource').onclick=async()=>{
+ if(busy)return;
+ const stateId=state.id,sourceIds=[...$('#remixSources').querySelectorAll('input:checked')].map(x=>x.value);
+ if(!sourceIds.length){toast('Chọn video nguồn trước khi lưu.',true);return;}
+ const name=await ask('Tên bộ nguồn','Bộ nguồn · '+state.name,'Lưu '+sourceIds.length+' video nguồn đã chọn.');
+ if(!name?.trim())return;
+ await run('Lưu bộ nguồn…',async()=>{
+  remixBatch=await api('remixSaveSource',{stateId,sourceIds,name:name.trim()});
+  await loadRemix();toast('Đã lưu bộ nguồn. Chọn Nhân bản cho kênh này để tạo bản nháp.');
+ });
+};

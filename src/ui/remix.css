@@ -44,3 +44,9 @@ body.remixDraftMode main{grid-template-rows:minmax(0,1fr)}
 .batchCard{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:7px;padding:12px;min-width:0}
 .batchCard strong{overflow-wrap:anywhere}.batchCard small{color:#9baabb}
 .batchCard.selected{border-color:#8cd6c5;background:#233b36}
+#remixCreateDialog{width:min(520px,90vw)}
+#remixCreateDialog form{display:flex;flex-direction:column;gap:14px}
+#remixCreateDialog form>label{display:flex;flex-direction:column;gap:6px}
+#remixCreateDialog details{padding:12px;border:1px solid #303844;border-radius:8px}
+#remixCreateDialog details label{margin-top:10px}
+#remixCreateContext{overflow-wrap:anywhere}
