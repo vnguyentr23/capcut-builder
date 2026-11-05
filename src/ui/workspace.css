@@ -291,3 +291,18 @@ body.bodyExpanded #bodyPreview{grid-template-columns:repeat(auto-fill,minmax(min
 .historyProject summary small{display:block;margin-top:5px;color:var(--muted);font-size:11px;font-weight:400}
 .historyVersions{padding:0 10px}
 .historyVersions .historyRow:last-child{border-bottom:0}
+
+/* Compact credit controls */
+.creditSettings .fields,.creditSettings .rxFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px;align-items:start}
+.creditSettings label{min-width:0;gap:5px;font-size:11px}
+.creditSettings input:not([type=checkbox]):not([type=range]),.creditSettings select{width:100%;height:30px;min-width:0;padding:4px 7px;box-sizing:border-box}
+.creditSettings label:has(.fontPicker){grid-column:1/-1}
+.creditSettings label.check{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:7px;min-height:30px;padding:0}
+.creditSettings input[type=checkbox]{width:14px;height:14px;flex:0 0 14px;margin:0}
+.creditSettings input[type=color]{padding:3px!important;cursor:pointer}
+.creditSettings input[type=range]{width:100%;margin:4px 0}
+.creditSettings label:has([data-setting="text.size"]){display:grid;grid-template-columns:1fr 52px;align-items:center}
+.creditSettings label:has([data-setting="text.size"]) input[type=range]{grid-column:1}
+.creditSettings label:has([data-setting="text.size"]) input[type=number]{grid-column:2;grid-row:2}
+
+.creditStyles{grid-column:1/-1;display:flex;gap:8px}.creditStyles label.check{flex:1;background:#222831;border:1px solid #353e49;border-radius:5px;padding:0 8px;min-height:30px}.creditStyles label:has(input:checked){border-color:#9cdecf;background:#273c39}

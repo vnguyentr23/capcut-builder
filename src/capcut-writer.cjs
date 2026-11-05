@@ -15,6 +15,7 @@ function resolveTransition(t,catalog){
   return r;
 }
 function fontFile(name){
+  if(path.isAbsolute(name)&&/\.(ttf|otf|ttc)$/i.test(name)&&fs.existsSync(name))return name;
   const dir=path.join(process.env.WINDIR||'C:/Windows','Fonts');
   const known={arial:'arial.ttf','times new roman':'times.ttf',calibri:'calibri.ttf','segoe ui':'segoeui.ttf',tahoma:'tahoma.ttf',verdana:'verdana.ttf'};
   const candidate=path.join(dir,known[name.toLowerCase()]||name+'.ttf');
@@ -23,7 +24,7 @@ function fontFile(name){
 }
 const fontCache=new Map();
 function makeText(c,segment){
-  const p=c.text,fontPath=fontFile(p.font),font=fontCache.get(fontPath)||require('fontkit').openSync(fontPath);fontCache.set(fontPath,font);
+  const p=c.text,fontPath=fontFile(p.font),font=fontCache.get(fontPath)||(()=>{const f=require('fontkit').openSync(fontPath);return f.fonts?.[0]||f;})();fontCache.set(fontPath,font);
   // XAO_VIDEO's calibrated text geometry: font size 15 / scale 0.2 = 33.333 px per em.
   const em=p.size*p.scale*(100/9),maxWidth=1920-p.marginLeft;
   const width=s=>font.layout(s).positions.reduce((n,x)=>n+x.xAdvance,0)/font.unitsPerEm*em;
@@ -31,7 +32,7 @@ function makeText(c,segment){
   const lines=[];for(const raw of source.split('\n')){let line='';for(const ch of raw){if(line&&width(line+ch)>maxWidth){lines.push(line);line='';}line+=ch;}lines.push(line);}
   const text=lines.join('\n'),w=Math.max(...lines.map(width)),h=em*(1+(lines.length-1)*1.2);
   if(h>1080-p.marginBottom)throw Error('Credit quá dài để đặt trong khung hình: '+path.basename(c.path));
-  const m=clone(template.textMaterial);Object.assign(m,{id:uid(),font_path:slash(fontPath),font_name:p.font,font_size:p.size,text_color:p.color,text_alpha:1,alignment:0,border_color:p.strokeColor,border_width:p.stroke/100,has_shadow:!!p.shadow,shadow_alpha:p.shadow?0.9:0,shadow_color:'#000000',shadow_distance:p.shadow?5:0});
+  const m=clone(template.textMaterial);Object.assign(m,{id:uid(),font_path:slash(fontPath),font_name:font.fullName||p.font,font_size:p.size,text_color:p.color,text_alpha:1,alignment:0,border_color:p.strokeColor,border_width:p.stroke/100,has_shadow:!!p.shadow,shadow_alpha:p.shadow?0.9:0,shadow_color:'#000000',shadow_distance:p.shadow?5:0});
   const rgb=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255);
   const style={fill:{content:{render_type:'solid',solid:{color:rgb(p.color)}}},font:{path:slash(fontPath),id:''},size:p.size,bold:!!p.bold,italic:!!p.italic,underline:!!p.underline,range:[0,text.length]};
   if(p.stroke>0)style.strokes=[{content:{render_type:'solid',solid:{color:rgb(p.strokeColor)}},width:p.stroke/100}];

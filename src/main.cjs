@@ -60,6 +60,7 @@ app.whenReady().then(async()=>{
     scrubFrame:async({id,time})=>require('./scrub-frame.cjs').scrubFrame(store.media(id),time),
     thumbnail:async(id)=>{const m=store.media(id);if(!m)throw Error('Không tìm thấy footage.');return thumbnails.get(m);},
     deleteNiche:async(id)=>{store.deleteNiche(id);current=store.list()[0]?.id||store.create('Ngách mới').id;store.pref('active',current);return view(store.get(current));},
+    fonts:async()=>require('./fonts.cjs').scan(),
     effects:async()=>{const result=await scanTransitions(undefined,7);store.pref('effectCatalog',JSON.stringify(result.items));return result;},
     transitions:async()=>{const result=await scanTransitions();store.pref('transitionCatalog',JSON.stringify(result.items));return result;},
     load:async(id)=>{if(id)current=store.pref('channel-active:'+id)||id;store.pref('active',current);const s=store.get(current);return view(s.groups.some(g=>!g.orderVersion)?await prepareOrder(s):s);},

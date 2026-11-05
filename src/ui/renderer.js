@@ -25,7 +25,7 @@ async function confirmRemoval(title,note){
 }
 
 function setSetting(key,value){const parts=key.split('.');let obj=state.draft;for(const p of parts.slice(0,-1))obj=obj[p];obj[parts.at(-1)]=value;}
-function getSetting(key){return key.split('.').reduce((o,k)=>o[k],state.draft);}
+function getSetting(key){const value=key.split('.').reduce((o,k)=>o?.[k],state.draft);return value??(key==='text.letterCase'?'original':value);}
 function bodyCountText(){const d=state.draft,base=CCBBody.baseBody(d).length,extra=d.body.length-base;return `${base}/${d.target} gốc${extra?' + '+extra+' bù':''}`;}
 function shortFillStatus(){const d=state.draft,fill=d.shortClipFill,base=CCBBody.baseBody(d),extra=d.body.filter(c=>c.supplementFor),filled=new Set(extra.map(c=>c.supplementFor));const missing=fill?.enabled?base.filter(c=>displayRange(c.id).duration<fill.threshold&&!filled.has(c.id)).length:0;$('#shortFillStatus').textContent=fill?.enabled?`${extra.length} clip đã bù${missing?' · '+missing+' clip ngắn chưa được bù':''}. Bấm Tạo Body để áp dụng khi đổi thiết lập hoặc điểm cắt.`:'Đang tắt bù clip ngắn.';return missing;}
 function updateSummary(){if(!state)return;$('#footerMode').textContent=state.draft.mode==='capcut'?'Tạo project editable trong CapCut':'Bản kế hoạch · Không phải project CapCut';$('#footerSummary').textContent=`${state.draft.hook.length} Hook · ${bodyCountText()} · ${state.draft.body.length} clip Body · ${Object.keys(state.draft.assignments).length} nhạc đã khóa`;}
@@ -48,7 +48,7 @@ function render(){
   $('#endFile').textContent=shortPath(state.draft.end?.path);$('#endFile').title=state.draft.end?.path||'';$('#endDurationLabel').hidden=state.draft.end?.kind!=='image';$('#endDuration').value=state.draft.end?.duration||5;
   $('#introPosition').value=state.draft.introPosition;$('#introAfter').value=state.draft.introAfterBlocks;$('#introAfter').hidden=state.draft.introPosition!=='afterBlocks';
   for(const id of ['hookDelay','fade','audioVolumeDb','musicAudioMode','mode'])$('#'+id).value=state.draft[id];
-  document.querySelectorAll('[data-setting]').forEach(e=>{if(e.type==='checkbox')e.checked=getSetting(e.dataset.setting);else e.value=e.dataset.percent?Math.round(getSetting(e.dataset.setting)*100):getSetting(e.dataset.setting);});
+  document.querySelectorAll('[data-setting]').forEach(e=>{if(e.classList.contains('fontPicker')){const value=getSetting(e.dataset.setting)||'Arial';e.innerHTML='<option value="'+esc(value)+'">'+esc(shortPath(value))+'</option>';}if(e.type==='checkbox')e.checked=getSetting(e.dataset.setting);else e.value=e.dataset.percent?Math.round(getSetting(e.dataset.setting)*100):getSetting(e.dataset.setting);});
   $('#destination').textContent=state.draft.destination||'Tự phát hiện thư mục CapCut trên máy';
   renderHook();renderPattern();renderBody();renderMusic();renderHistory();renderLocalTransitions();renderEndEffects();updateSummary();
 }
@@ -395,7 +395,10 @@ $('#detect').onclick=()=>run('Kiểm tra CapCut…',detect);
 $('#check').onclick=()=>run('Kiểm tra dự án…',async()=>showChecks(await api('check',state)));
 $('#build').onclick=()=>run('Kiểm tra và tạo dự án…',async()=>{const r=await api('build',state);if(r.view)accept(r.view);showChecks(r.check);if(r.result)toast(r.result.kind==='capcut'?'Đã tạo dự án editable. Mở CapCut để chỉnh sửa; lịch sử footage đã được lưu.':'Đã lưu bản kế hoạch; chưa phải dự án CapCut.');});
 $('#openOutput').onclick=()=>run('Mở thư mục đầu ra…',()=>api('openOutput'));
-function toggleSettings(open){$('#settingsSidebar').hidden=!open;$('#toggleSettings').setAttribute('aria-expanded',String(open));if(open)$('#closeSettings').focus();else $('#toggleSettings').focus();}
+let assetRefresh=null;
+async function refreshLocalAssets(){if(assetRefresh)return assetRefresh;assetRefresh=(async()=>{const results=await Promise.allSettled([api('fonts'),api('transitions'),api('effects')]);if(results[0].status==='fulfilled'){window.localFonts=results[0].value;fillFontPickers();}if(results[1].status==='fulfilled'){transitionCatalog=results[1].value.items;renderLocalTransitions();}if(results[2].status==='fulfilled'){effectCatalog=results[2].value.items;renderEndEffects();}const failures=results.filter(r=>r.status==='rejected');if(failures.length)toast('Không đọc được một số tài nguyên: '+failures.map(r=>r.reason.message).join('; '),true);})().finally(()=>assetRefresh=null);return assetRefresh;}
+function fillFontPickers(){document.querySelectorAll('.fontPicker').forEach(el=>{const value=el.value||'Arial';el.innerHTML='<option value="'+esc(value)+'">'+esc((window.localFonts||[]).find(f=>f.path===value)?.name||shortPath(value))+'</option>'+(window.localFonts||[]).filter(f=>f.path!==value).map(f=>'<option value="'+esc(f.path)+'">'+esc(f.name)+'</option>').join('');el.value=value;});}
+function toggleSettings(open){$('#settingsSidebar').hidden=!open;$('#toggleSettings').setAttribute('aria-expanded',String(open));if(open){$('#closeSettings').focus();refreshLocalAssets();}else $('#toggleSettings').focus();}
 $('#toggleSettings').onclick=()=>toggleSettings($('#settingsSidebar').hidden);
 $('#closeSettings').onclick=()=>toggleSettings(false);
 $('#closeChecks').onclick=()=>{$('#checkPanel').hidden=true;$('#check').focus();};
