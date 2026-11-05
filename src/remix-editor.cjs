@@ -87,6 +87,17 @@ async function mutate(store,args){
    else{const target=index+args.direction;if(![-1,1].includes(args.direction)||target<1||target>=e.blocks.length)throw Error('Vị trí block không hợp lệ.');[e.blocks[index],e.blocks[target]]=[e.blocks[target],e.blocks[index]];}
    p.assignments=p.assignments.flatMap(a=>{const block=e.blocks.findIndex(x=>x.id===oldIds[a.block]);return block<0?[]:[{...a,block}];});
   }
+  else if(op==='swapMusicHook'){
+   const index=e.blocks.findIndex(block=>block.id===args.blockId);
+   if(index<=0)throw Error('Hãy chọn block Body để đổi nhạc với Hook.');
+   const hook=p.assignments.find(a=>a.block===0),body=p.assignments.find(a=>a.block===index);
+   if(!hook||!body)throw Error('Hook và block cần được gán nhạc trước.');
+   const hookDuration=p.blocks[0].duration-Math.min((p.settings?.hookDelay??3)*1e6,p.blocks[0].duration);
+   if(hookDuration<=0)throw Error('Hook ngắn hơn độ trễ nhạc.');
+   if(Math.round(hook.sourceDuration*1e6)<p.blocks[index].duration||Math.round(body.sourceDuration*1e6)<hookDuration)throw Error('Bài nhạc không đủ dài cho vị trí mới. Hãy chọn bài khác.');
+   p.assignments=p.assignments.map(a=>a===hook?{...body,block:0,sourceStart:0}:a===body?{...hook,block:index,sourceStart:0}:a);
+   p.assignments=require('./remix-timing.cjs').assignments(p,p.settings);
+  }
   else if(op==='blockMusic'){
    const index=e.blocks.findIndex(x=>x.id===args.blockId),block=p.blocks[index];if(!block)throw Error('Block không tồn tại.');
    const duration=block.duration-(index===0?Math.min((p.settings?.hookDelay??3)*1e6,block.duration):0);if(duration<=0)throw Error('Hook ngắn hơn độ trễ nhạc đã thiết lập.');
@@ -113,7 +124,7 @@ async function mutate(store,args){
   }else throw Error('Thao tác không hợp lệ.');
   e.revision++;
  }
- if(op!=='blockMusic')rebuild(p);p.editedAt=new Date().toISOString();p.locked=true;remix.save(store,b);return present(p);
+ if(!['blockMusic','swapMusicHook'].includes(op))rebuild(p);p.editedAt=new Date().toISOString();p.locked=true;remix.save(store,b);return present(p);
 }
 function copyForExport(store,id,projectId,existingNames=[]){
  const b=remix.get(store,id),source=b.projects.find(p=>p.id===projectId);if(!source)throw Error('Không tìm thấy dự án.');if(!source.installed)throw Error('Dự án chưa tạo CapCut; hãy chỉnh bản nháp hiện tại.');

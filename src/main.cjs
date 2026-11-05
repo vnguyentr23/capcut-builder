@@ -71,6 +71,7 @@ app.whenReady().then(async()=>{
     remixGet:async(id)=>remix.present(await remix.get(store,id)),
     remixSaveSource:async(p)=>remix.present(await remix.saveSource(store,p)),
     remixCreate:async(p)=>remix.present(await remix.create(store,p)),
+    remixAppend:async(p)=>remix.present(await remix.appendSources(store,p)),
     remixReroll:async({id,projectId})=>remix.present(await remix.reroll(store,id,projectId)),
     remixLock:async({id,projectId})=>remix.present(await remix.lock(store,id,projectId)),
     remixMusic:async({id,folders})=>remix.present(await remix.assignMusic(store,id,folders,p=>win.webContents.send('scan-progress',p))),

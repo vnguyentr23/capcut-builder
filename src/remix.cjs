@@ -78,20 +78,47 @@ async function create(store,{stateId,sourceIds,channelId,name,sourceBatchId,opti
  const parent=sourceBatchId?get(store,sourceBatchId):null;if(parent&&parent.rootId!==root)throw Error('Bộ nguồn không thuộc ngách.');const sources=parent?sourcesFromBatch(parent):await capture(store,sourceIds),batch={id:uid(),rootId:root,channelId,name:String(name||'Bộ nhân bản').trim(),sources,projects:[],options:{mixHook:true,balance:true,...options},settings:structuredClone(store.get(channelId).draft),musicFolders:preferences(store,channelId).folders||{},inheritedHistory:allSignatures(store,root)};
  await generate(store,batch,target.name==='Kênh gốc'?state.name:target.name);store.pref('remix-settings:'+channelId,JSON.stringify({...preferences(store,channelId),options:batch.options}));return save(store,batch);
 }
-async function generate(store,batch,prefix,onlyId=null){
+async function generate(store,batch,prefix,onlyId=null,updating=false){
  const sources=await analyzeSources(batch.sources,batch.options),plans=mix(sources,batch.options,uid(),[...allSignatures(store,batch.rootId),...(batch.inheritedHistory||[])]),e=await engine();
+ const blocked=updating?require('./remix-used.cjs')(store,batch.channelId):null;
  const otherNames=store.db.prepare('SELECT summary FROM remix_batches WHERE channel_id=?').all(batch.channelId).flatMap(r=>(JSON.parse(r.summary).names||[]).map(n=>n.toLowerCase()));
  const taken=new Set([...otherNames,...store.history(batch.channelId).map(p=>p.name.toLowerCase()),...batch.projects.map(p=>p.name.toLowerCase())]);let num=0;
  for(const [i,p] of plans.entries()){
   const previous=batch.projects[i];if(previous&&(previous.locked||previous.installed||(onlyId&&previous.id!==onlyId)))continue;
   let name=previous?.name;if(!name){do{name=prefix+'_'+(++num);}while(taken.has(name.toLowerCase()));taken.add(name.toLowerCase());}
-  if(onlyId){require('./remix-unused-plan.cjs')(p,sources,require('./remix-used.cjs')(store,batch.channelId));p.signature=signature(p.blocks);if(allSignatures(store,batch.rootId).includes(p.signature))throw Error('Không đủ tổ hợp footage chưa dùng để tạo thứ tự mới. Bản nháp được giữ nguyên.');}
+  if(onlyId||updating){require('./remix-unused-plan.cjs')(p,sources,blocked||require('./remix-used.cjs')(store,batch.channelId));p.signature=signature(p.blocks);if(allSignatures(store,batch.rootId).includes(p.signature))throw Error('Không đủ tổ hợp footage chưa dùng để tạo thứ tự mới. Bản nháp được giữ nguyên.');}
+  if(updating)for(const block of p.blocks.slice(1))for(const unit of block.units)blocked.add(unit.identity);
   const result=e.buildDraft(p,sources,{name}),bodyOriginal=new Set(p.source.blocks.slice(1).flatMap(b=>b.units.map(u=>u.identity))),body=p.blocks.slice(1).flatMap(b=>b.units);
   const blocks=p.blocks.map((b,index)=>{const entries=result.ledger.filter(r=>r.block===index+1);return {index,hook:index===0,start:Math.min(...entries.map(r=>r.newStart)),duration:entries.reduce((n,r)=>n+r.duration,0),clips:b.units.map(u=>({name:u.name,path:u.path,fingerprint:u.identity,sourceStart:u.segments[0].source_timerange?.start||0,duration:u.duration,parts:u.segments.map(s=>({start:(s.source_timerange?.start||0)/1e6,duration:(s.source_timerange?.duration||s.target_timerange.duration)/1e6,speed:s.speed||1,volume:s.volume??1}))}))};});
   if(p.source.ending)blocks.at(-1).duration+=p.source.ending.duration;
-  batch.projects[i]={id:previous?.id||uid(),name,locked:false,draft:result.draft,ledger:result.ledger,signature:p.signature,blocks,assignments:[],sourceName:p.source.name,reusedPercent:Math.round(100*body.filter(u=>bodyOriginal.has(u.identity)).length/Math.max(1,body.length)),installed:null,...(batch.renderSettings?{settings:structuredClone(batch.renderSettings)}:{})};
+  batch.projects[i]={id:previous?.id||uid(),name,locked:false,draft:result.draft,ledger:result.ledger,signature:p.signature,blocks,assignments:[],sourceName:p.source.name,reusedPercent:Math.round(100*body.filter(u=>bodyOriginal.has(u.identity)).length/Math.max(1,body.length)),installed:null,...(previous?.settings||batch.renderSettings?{settings:structuredClone(previous?.settings||batch.renderSettings)}:{})};
  }
  return batch;
+}
+async function appendSources(store,{id,stateId,sourceIds}){
+ const batch=get(store,id);
+ if(batch.channelId!==stateId)throw Error('Bộ không thuộc kênh đang chọn.');
+ if(!batch.projects.length)throw Error('Chọn bộ bản nháp cần bổ sung.');
+ const allowed=new Set(sourceProjects(store,stateId).map(p=>p.id));
+ if(!Array.isArray(sourceIds)||!sourceIds.length||sourceIds.some(id=>!allowed.has(id)))throw Error('Chọn các video nguồn thuộc ngách.');
+ const previousIds=new Set([...(batch.inputSourceIds||[]),...batch.sources.map(s=>s.id)]);
+ const addedIds=[...new Set(sourceIds)].filter(id=>!previousIds.has(id));
+ if(!addedIds.length)throw Error('Các video được chọn đã có trong bộ.');
+ const incoming=await capture(store,addedIds);
+ const pending=batch.projects.filter(p=>!p.installed);
+ const snapshots=sourcesFromBatch({...batch,projects:pending});
+ const working={...batch,sources:[...snapshots,...incoming],projects:pending.map(p=>({...p,locked:false}))};
+ const channel=store.get(batch.channelId);
+ await generate(store,working,channel.channelName==='Kênh gốc'?channel.name:channel.channelName,null,true);
+ // Persist the whole update once, only after every pending project succeeds.
+ const replacements=new Map(working.projects.slice(0,pending.length).map(p=>[p.id,p]));
+ const oldSources=new Map(batch.projects.map((p,i)=>[p.id,batch.sources[i]]));
+ const newSources=new Map(pending.map((p,i)=>[p.id,snapshots[i]]));
+ batch.sources=batch.projects.map(p=>p.installed?oldSources.get(p.id):newSources.get(p.id)).concat(incoming);
+ if(batch.sources.some(s=>!s))throw Error('Bộ thiếu bản nguồn tương ứng. Chưa lưu thay đổi.');
+ batch.projects=batch.projects.map(p=>replacements.get(p.id)||p).concat(working.projects.slice(pending.length));
+ batch.inputSourceIds=[...new Set([...previousIds,...addedIds])];
+ return save(store,batch);
 }
 async function reroll(store,id,projectId){const b=get(store,id),p=b.projects.find(p=>p.id===projectId);if(!p||p.locked||p.installed)throw Error('Dự án đã khóa hoặc đã tạo CapCut.');const target=store.get(b.channelId);await generate(store,b,target.channelName==='Kênh gốc'?target.name:target.channelName,projectId);return save(store,b);}
 function lock(store,id,projectId){const b=get(store,id),p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy dự án.');p.locked=!p.locked;return save(store,b);}
@@ -170,4 +197,4 @@ function removeBatch(store,{id,stateId}){
  }catch(e){store.db.exec('ROLLBACK');throw e;}
  return true;
 }
-module.exports={mediaPath,musicPreview,prepare,removeBatch,present,saveSource,sourcesFromBatch,preferences,list,get,save,sourceProjects,analyzeSources,mix,capture,create,reroll,lock,assignMusic,withMusic,check,install,allSignatures};
+module.exports={appendSources,mediaPath,musicPreview,prepare,removeBatch,present,saveSource,sourcesFromBatch,preferences,list,get,save,sourceProjects,analyzeSources,mix,capture,create,reroll,lock,assignMusic,withMusic,check,install,allSignatures};

@@ -49,3 +49,25 @@ test('Reroll filters exported Body across batches, preserves Hook reuse and fail
   const snapshot=JSON.stringify(remix.get(store,b.id));await assert.rejects(remix.reroll(store,b.id,target.id),/Không đủ footage/);assert.equal(JSON.stringify(remix.get(store,b.id)),snapshot);
  }finally{store.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
+test('Append sources remixes only pending projects, retains exported projects and rejects repeated sources',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ccb-append-')),store=new Store(':memory:');
+ try{
+  const state=store.create('Append'),channel=channels.create(store,state.id,'Target');
+  const original={id:uid(),rootId:state.id,channelId:state.id,name:'Sources',sources:[fixture(dir,1),fixture(dir,2),fixture(dir,3)],projects:[],settings:defaults()};
+  remix.save(store,original);
+  const batch=await remix.create(store,{stateId:state.id,channelId:channel.id,sourceBatchId:original.id,name:'Batch'});
+  batch.projects[0].installed='exported';batch.projects[0].locked=true;batch.projects[1].locked=true;
+  remix.save(store,batch);
+  const installed=structuredClone(batch.projects[0]),source=fixture(dir,4),folder=path.join(dir,'new-source');
+  fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'draft_content.json'),JSON.stringify(source.draft));fs.writeFileSync(path.join(folder,'draft_meta_info.json'),'{}');
+  store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(source.id,state.id,source.name,'CREATED',folder,'now','{}');
+  const result=await remix.appendSources(store,{id:batch.id,stateId:channel.id,sourceIds:[source.id]});
+  assert.equal(result.projects.length,4);assert.deepEqual(result.projects[0],installed);
+  assert.equal(result.projects[1].id,batch.projects[1].id);assert.equal(result.projects[1].name,batch.projects[1].name);
+  const used=new Set(installed.blocks.flatMap(b=>b.clips.map(c=>c.fingerprint)));
+  for(const p of result.projects.slice(1))for(const b of p.blocks.slice(1))for(const c of b.clips){assert(!used.has(c.fingerprint));used.add(c.fingerprint);}
+  const before=JSON.stringify(remix.get(store,batch.id));
+  await assert.rejects(remix.appendSources(store,{id:batch.id,stateId:channel.id,sourceIds:[source.id]}),/đã có trong bộ/);
+  assert.equal(JSON.stringify(remix.get(store,batch.id)),before);
+ }finally{store.close();fs.rmSync(dir,{recursive:true,force:true});}
+});

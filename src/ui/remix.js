@@ -5,6 +5,13 @@ const contextLabel=document.createElement('p');contextLabel.className='muted';$(
 const deleteDialog=document.createElement('dialog');deleteDialog.innerHTML='<form method="dialog"><h2>Xóa bộ đã lưu?</h2><p id="remixDeleteName"></p><p>Chỉ xóa bộ và bản nháp trong tool. Giữ footage, dự án CapCut và lịch sử đã sử dụng.</p><div class="row"><button value="cancel">Hủy</button><button value="delete">Xóa bộ</button></div></form>';document.body.append(deleteDialog);
 deleteBatchButton.onclick=()=>{if(!remixBatch)return;const id=remixBatch.id,stateId=state.id;$('#remixDeleteName').textContent=remixBatch.name;deleteDialog.onclose=()=>{if(deleteDialog.returnValue==='delete')run('Xóa bộ…',async()=>{await api('remixDelete',{id,stateId});remixBatch=null;await loadRemix();toast('Đã xóa bộ khỏi danh sách.');});};deleteDialog.showModal();};
 const batchSettingsButton=document.createElement('button');batchSettingsButton.textContent='Thiết lập cả bộ';batchSettingsButton.id='remixBatchSettings';$('#remixExport').before(batchSettingsButton);batchSettingsButton.onclick=()=>window.openRemixBatchSettings(remixBatch.id);
+const appendSourcesButton=document.createElement('button');
+appendSourcesButton.textContent='Bổ sung nguồn đã chọn';appendSourcesButton.title='Thêm video nguồn đang chọn ở cột bên trái và trộn lại các bản nháp chưa xuất';
+$('#remixFromBatch').after(appendSourcesButton);
+appendSourcesButton.onclick=()=>run('Bổ sung nguồn và trộn lại bản nháp…',async()=>{
+ remixBatch=await api('remixAppend',{id:remixBatch.id,stateId:state.id,sourceIds:[...$('#remixSources').querySelectorAll('input:checked')].map(x=>x.value)});
+ await loadRemix();toast('Đã bổ sung và trộn lại các bản nháp chưa xuất. Hãy gán nhạc cho các bản nháp vừa trộn.');
+});
 window.refreshRemixContext=()=>loadRemix();
 window.renderChannels=()=>{const list=window.remixChannels||[];$('#channel').innerHTML=list.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');$('#channel').value=state.id;$('#deleteChannel').disabled=state.id===(state.rootNicheId||state.id);};
 $('#channel').onchange=e=>run('Chuyển kênh…',async()=>{accept(await api('channelSwitch',e.target.value));if(!$('#remixPanel').hidden)await loadRemix();});
@@ -35,7 +42,7 @@ async function createRemix(fromBatch=false){await run('Trộn footage và dựng
 });}
 $('#remixCreate').onclick=()=>createRemix(false);$('#remixFromBatch').onclick=()=>createRemix(true);
 function renderRemix(){
- const b=remixBatch;deleteBatchButton.disabled=!b;batchSettingsButton.disabled=!b?.projects.some(p=>!p.installed);$('#remixResult').hidden=!b;$('#remixFromBatch').disabled=!b;
+ const b=remixBatch;appendSourcesButton.disabled=!b?.projects.length;deleteBatchButton.disabled=!b;batchSettingsButton.disabled=!b?.projects.some(p=>!p.installed);$('#remixResult').hidden=!b;$('#remixFromBatch').disabled=!b;
  if(!b){$('#remixRows').innerHTML='';$('#remixChecks').textContent='';return;}$('#remixSourceSummary').hidden=!!b.projects.length;$('#remixSourceSummary').textContent=b.sources.length+' dự án nguồn đã lưu. Chọn kênh đích rồi bấm Nhân bản từ bộ này, hoặc xuất gói chuyển máy.';for(const id of ['remixInstall','remixCheck','remixAssignMusic'])$('#'+id).disabled=!b.projects.length;
  $('#remixRelink').hidden=!b.assetManifest;$('#remixBatchTitle').textContent=b.name;$('#remixHookFolder').textContent=b.musicFolders?.hook||'Chọn thư mục nhạc Hook';$('#remixBodyFolder').textContent=b.musicFolders?.body||'Chọn thư mục nhạc Body';
  $('#remixRows').innerHTML=b.projects.map(p=>`<tr><td><strong>${esc(p.name)}</strong><small>${esc(p.sourceName)}</small></td><td>${p.blocks[0]?.clips.length||0} Hook + ${p.blocks.slice(1).reduce((n,b)=>n+b.clips.length,0)} Body<br><small>${p.blocks.length} block</small></td><td>${fmt(p.draft.duration/1e6)}</td><td>${p.reusedPercent}%<small>Thứ tự mới</small></td><td>${p.installed?'Đã tạo CapCut':p.editedAt?'Đã chỉnh sửa':p.assignments.length?'Đã gán nhạc':'Chưa gán nhạc'}</td><td><div class="row"><button data-remix-edit="${esc(p.id)}">Chỉnh sửa</button>${p.installed?`<button data-remix-copy="${esc(p.id)}">Tạo lại bản sao</button>`:''}<button data-remix-view="${esc(p.id)}">Xem</button><button data-remix-roll="${esc(p.id)}" ${p.locked||p.installed?'disabled':''}>↻ Trộn</button><button data-remix-lock="${esc(p.id)}" ${p.installed?'disabled':''}>${p.locked?'🔒':'🔓'}</button></div></td></tr>`).join('');
