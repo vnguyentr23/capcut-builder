@@ -255,16 +255,21 @@ function renderHistory(){
 }
 function showChecks(result){$('#checkPanel').hidden=false;$('#checkCount').textContent=result.ok?'Có thể tạo bản kế hoạch':'Cần xử lý lỗi trước khi tạo';$('#checks').innerHTML=result.checks.map(c=>`<div class="checkRow ${c.level}">${c.level==='error'?'✕':c.level==='warning'?'△':'✓'} ${esc(c.text)}</div>`).join('');$('#checkPanel').scrollTop=0;}
 async function detect(){const r=await api('detect',state);$('#adapterSummary').textContent=r.compatible?'CapCut '+r.versions[0]+' · Bộ ghi dự án sẵn sàng':r.reason;$('#adapterDetails').textContent=r.reason;$('#footerMode').textContent=state.draft.mode==='capcut'?'Tạo project editable trong CapCut':'Bản kế hoạch · Không phải project CapCut';if(!state.draft.destination){state.draft.destination=r.destination;$('#destination').textContent=r.destination;await save();}}
-let trimEditingId=null,stopSfx=null;
+let trimEditingId=null,stopSfx=null,trimViewStart=0,trimViewEnd=1;
+const trimZoom=document.createElement('div');trimZoom.className='trimZoom';trimZoom.innerHTML='<button data-zoom="out" title="Thu nhỏ">−</button><button data-zoom="in" title="Phóng to">＋</button><button data-zoom="fit">Vừa đoạn chọn</button><button data-zoom="all">Toàn bộ</button><span></span><input aria-label="Di chuyển vùng timeline" type="range" min="0" max="1000" value="0">';$('#trimTimeline').before(trimZoom);
+function setTrimView(start,end){const total=media.get(trimEditingId)?.duration||1,span=Math.min(total,Math.max(1/30,end-start));trimViewStart=Math.max(0,Math.min(total-span,start));trimViewEnd=trimViewStart+span;updateTrimInfo();}
+trimZoom.onclick=e=>{const action=e.target.dataset.zoom;if(!action||!trimEditingId)return;const t=readTrim(),total=media.get(trimEditingId).duration;if(action==='all')setTrimView(0,total);else if(action==='fit'){const pad=(t.end-t.start)*.08;setTrimView(t.start-pad,t.end+pad);}else{const span=(trimViewEnd-trimViewStart)*(action==='in'?.5:2),center=(Math.max(trimViewStart,t.start)+Math.min(trimViewEnd,t.end))/2;setTrimView(center-span/2,center+span/2);}};
+trimZoom.querySelector('input').oninput=e=>{const span=trimViewEnd-trimViewStart,total=media.get(trimEditingId).duration,start=Number(e.target.value)/1000*Math.max(0,total-span);setTrimView(start,start+span);};
+
 const trimSfxHost=document.createElement('div');$('#trimRuler').after(trimSfxHost);
-const trimSfx=SoundEffects.editor(trimSfxHost,{context:()=>({stateId:state.id}),duration:()=>{try{const t=readTrim();return t.end-t.start;}catch{return 0;}},time:()=>{try{return (inlinePlayer?.currentTime||0)-readTrim().start;}catch{return 0;}}});
+const trimSfx=SoundEffects.editor(trimSfxHost,{context:()=>({stateId:state.id}),viewport:()=>({start:trimViewStart,end:trimViewEnd,offset:Number($('#trimStart').value)||0}),duration:()=>{try{const t=readTrim();return t.end-t.start;}catch{return 0;}},time:()=>{try{return (inlinePlayer?.currentTime||0)-readTrim().start;}catch{return 0;}}});
 SoundEffects.folderButton($('#settingsSidebar .sidebarContent'),()=>({stateId:state.id}));
 
 function displayRange(id,fallback=0){const m=media.get(id),duration=m?.duration||fallback,trim=state?.draft.trims?.[id];if(!trim)return {start:0,end:duration,duration};const start=Math.round(trim.start*30)/30,end=Math.min(Math.floor(duration*30+1e-7),Math.round(trim.end*30))/30;return {start,end,duration:Math.max(0,end-start)};}
 function closeTrim(){scrubEpoch++;scrubPending=null;$('#trimVideoHost .scrubFrame')?.remove();trimSeekTarget=null;trimGesture=null;if(trimEditingId)stopFootage();trimEditingId=null;if($('#trimEditor').open)$('#trimEditor').close();$('#trimEditor').hidden=true;}
 async function openTrim(id){
   const m=media.get(id);if(!m||!(m.duration>0))return;scrubEpoch++;scrubPending=null;$('#trimVideoHost .scrubFrame')?.remove();trimSeekTarget=null;trimEditingId=id;
-  const range=displayRange(id);$('#trimName').textContent=m.name;$('#trimAudioMode').value=state.draft.audioModes?.[id]||'original';$('#trimStart').value=range.start.toFixed(3);$('#trimEnd').value=range.end.toFixed(3);
+  trimViewStart=0;trimViewEnd=m.duration;const range=displayRange(id);$('#trimName').textContent=m.name;$('#trimAudioMode').value=state.draft.audioModes?.[id]||'original';$('#trimStart').value=range.start.toFixed(3);$('#trimEnd').value=range.end.toFixed(3);
   trimSfx.set(state.draft.soundEffects?.[id]||[]);for(const key of ['trimStart','trimEnd'])$('#'+key).max=m.duration;
   $('#trimEditor').hidden=false;if(!$('#trimEditor').open)$('#trimEditor').showModal();updateTrimInfo();
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));if(trimEditingId===id){$('#trimVideoHost').dataset.preview=id;await showFootage(id,$('#trimVideoHost'));}
@@ -279,12 +284,13 @@ function readTrim(){
 function updateTrimInfo(){try{const t=readTrim();$('#trimInfo').textContent=(t.end-t.start).toFixed(2)+' giây';$('#applyTrim').disabled=false;drawTrimTimeline(t);trimSfx.refresh();}catch(e){$('#trimInfo').textContent=e.message;$('#applyTrim').disabled=true;}}
 function drawTrimTimeline(t){
   const duration=media.get(trimEditingId)?.duration;if(!duration)return;
-  const left=t.start/duration*100,right=t.end/duration*100;
-  $('#trimSelection').style.left=left+'%';$('#trimSelection').style.width=(right-left)+'%';
-  for(const [id,value] of [['trimInHandle',t.start],['trimOutHandle',t.end]]){const handle=$('#'+id);handle.style.left=(value/duration*100)+'%';handle.setAttribute('aria-valuemin',0);handle.setAttribute('aria-valuemax',duration);handle.setAttribute('aria-valuenow',value);handle.setAttribute('aria-valuetext',value.toFixed(3)+' giây');}
-  $('#trimRuler').innerHTML=Array.from({length:5},(_,i)=>'<span>'+fmt(duration*i/4)+'</span>').join('');updateTrimPlayhead();
+  const span=trimViewEnd-trimViewStart,left=Math.max(0,(t.start-trimViewStart)/span*100),right=Math.min(100,(t.end-trimViewStart)/span*100);
+  $('#trimSelection').style.left=left+'%';$('#trimSelection').style.width=Math.max(0,right-left)+'%';
+  for(const [id,value] of [['trimInHandle',t.start],['trimOutHandle',t.end]]){const handle=$('#'+id);handle.style.left=((value-trimViewStart)/span*100)+'%';handle.style.visibility=value<trimViewStart||value>trimViewEnd?'hidden':'visible';handle.setAttribute('aria-valuemin',0);handle.setAttribute('aria-valuemax',duration);handle.setAttribute('aria-valuenow',value);handle.setAttribute('aria-valuetext',value.toFixed(3)+' giây');}
+  $('#trimRuler').innerHTML=Array.from({length:5},(_,i)=>'<span>'+(trimViewStart+span*i/4).toFixed(span<15?2:0)+'s'+'</span>').join('');trimZoom.querySelector('span').textContent=(duration/span).toFixed(1)+'×';const pan=trimZoom.querySelector('input');pan.disabled=span>=duration;pan.value=duration>span?trimViewStart/(duration-span)*1000:0;updateTrimPlayhead();
 }
-function updateTrimPlayhead(){if(!trimEditingId)return;const duration=media.get(trimEditingId)?.duration||1;$('#trimPlayhead').style.left=Math.min(100,Math.max(0,($('#trimVideoHost .scrubFrame')&&!$('#trimVideoHost .scrubFrame').hidden?scrubDisplayedTime||0:inlineHost?.dataset.preview===trimEditingId?inlinePlayer?.currentTime||0:0)/duration*100))+'%';}
+function updateTrimPlayhead(){if(!trimEditingId)return;const time=$('#trimVideoHost .scrubFrame')&&!$('#trimVideoHost .scrubFrame').hidden?scrubDisplayedTime||0:inlineHost?.dataset.preview===trimEditingId?inlinePlayer?.currentTime||0:0;$('#trimPlayhead').style.left=Math.min(100,Math.max(0,(time-trimViewStart)/(trimViewEnd-trimViewStart)*100))+'%';}
+
 let scrubPending=null,scrubBusy=false,scrubEpoch=0,scrubDisplayedTime=null;
 function queueScrubFrame(time){scrubPending={id:trimEditingId,time,epoch:scrubEpoch};pumpScrubFrame();}
 async function pumpScrubFrame(){
@@ -319,21 +325,21 @@ function setTrimFrames(first,last,seek){
 }
 let trimGesture=null;
 $('#trimTimeline').onpointerdown=e=>{
-  if(e.button!==0||!trimEditingId)return;const rect=e.currentTarget.getBoundingClientRect(),max=Math.floor(media.get(trimEditingId).duration*30+1e-7),t=readTrim(),frame=Math.round(Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width))*max);
+  if(e.button!==0||!trimEditingId)return;const rect=e.currentTarget.getBoundingClientRect(),max=Math.floor(media.get(trimEditingId).duration*30+1e-7),t=readTrim(),frame=Math.round((trimViewStart+Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width))*(trimViewEnd-trimViewStart))*30);
   const kind=e.target.id==='trimInHandle'?'in':e.target.id==='trimOutHandle'?'out':e.target.id==='trimSelection'?'move':'seek';
-  trimGesture={kind,x:e.clientX,rect,max,first:Math.round(t.start*30),last:Math.round(t.end*30)};
+  trimGesture={kind,x:e.clientX,rect,max,viewStart:trimViewStart*30,viewSpan:(trimViewEnd-trimViewStart)*30,first:Math.round(t.start*30),last:Math.round(t.end*30)};
   e.currentTarget.setPointerCapture(e.pointerId);e.preventDefault();
   seekTrim((kind==='in'?trimGesture.first:kind==='out'?trimGesture.last:frame)/30);
 };
 $('#trimTimeline').onpointermove=e=>{
-  if(!trimGesture)return;const g=trimGesture,delta=Math.round((e.clientX-g.x)/g.rect.width*g.max);let first=g.first,last=g.last;
+  if(!trimGesture)return;const g=trimGesture,delta=Math.round((e.clientX-g.x)/g.rect.width*g.viewSpan);let first=g.first,last=g.last;
   if(g.kind==='in')first=Math.min(last-1,Math.max(0,first+delta));
   else if(g.kind==='out')last=Math.max(first+1,Math.min(g.max,last+delta));
   else if(g.kind==='move'){first=Math.max(0,Math.min(g.max-(last-first),first+delta));last=first+g.last-g.first;}
-  else {seekTrim(Math.max(0,Math.min(g.max,Math.round((e.clientX-g.rect.left)/g.rect.width*g.max)))/30);return;}
+  else {seekTrim(Math.max(0,Math.min(g.max,Math.round(g.viewStart+(e.clientX-g.rect.left)/g.rect.width*g.viewSpan)))/30);return;}
   setTrimFrames(first,last,g.kind==='out'?last:first);
 };
-$('#trimTimeline').onpointerup=e=>{if(trimGesture?.kind==='move'&&Math.abs(e.clientX-trimGesture.x)<3&&inlinePlayer){seekTrim(Math.max(0,Math.min(trimGesture.max,Math.round((e.clientX-trimGesture.rect.left)/trimGesture.rect.width*trimGesture.max)))/30);}trimGesture=null;if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);};
+$('#trimTimeline').onpointerup=e=>{if(trimGesture?.kind==='move'&&Math.abs(e.clientX-trimGesture.x)<3&&inlinePlayer){seekTrim(Math.max(0,Math.min(trimGesture.max,Math.round(trimGesture.viewStart+(e.clientX-trimGesture.rect.left)/trimGesture.rect.width*trimGesture.viewSpan)))/30);}trimGesture=null;if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);};
 $('#trimTimeline').onpointercancel=()=>{trimGesture=null;};
 for(const id of ['trimInHandle','trimOutHandle'])$('#'+id).onkeydown=e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const t=readTrim(),max=Math.floor(media.get(trimEditingId).duration*30+1e-7),delta=(e.key==='ArrowLeft'?-1:1)*(e.shiftKey?30:1);let first=Math.round(t.start*30),last=Math.round(t.end*30);if(id==='trimInHandle')first=Math.max(0,Math.min(last-1,e.key==='Home'?0:e.key==='End'?last-1:first+delta));else last=Math.max(first+1,Math.min(max,e.key==='Home'?first+1:e.key==='End'?max:last+delta));setTrimFrames(first,last,id==='trimInHandle'?first:last);};
 for(const key of ['trimStart','trimEnd'])$('#'+key).oninput=()=>{updateTrimInfo();try{const t=readTrim();seekTrim(key==='trimStart'?t.start:t.end);}catch{}};
