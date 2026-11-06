@@ -4,6 +4,7 @@ const {nameErrors,timeline,musicSlots,clipRange}=require('./domain.cjs');
 async function preflight(state,media,used,capcut,output) {
   const d=state.draft,checks=[],base=require('./ui/body-layout.js').baseBody(d),fill=d.shortClipFill||{enabled:false,threshold:5};
   const add=(level,text)=>checks.push({level,text});for(const c of [...d.hook,...d.body]){const m=media.get(c.id);if(m?.copyrightBlocked)add('error','Bị chặn bản quyền: '+m.name+' · '+m.copyrightBlocked);}
+  for(const c of [...d.hook,...d.body])try{require('./sound-effects.cjs').validate(d.soundEffects?.[c.id]||[]);}catch(e){add('error',e.message);}
   nameErrors(d.name).forEach(t=>add('error',t));
   if(!nameErrors(d.name).length)add('ok','Tên dự án hợp lệ trên Windows.');
   if(fs.existsSync(path.join(output,d.name)))add('error','Tên đã tồn tại trong thư mục manifest. Bấm “Tự sửa tên”.');

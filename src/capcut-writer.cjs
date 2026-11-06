@@ -83,7 +83,7 @@ function build(manifest,catalog=[]){
     const m={id:uid(),type:'transition',name:r.name,effect_id:r.effectId,resource_id:r.resourceId||r.effectId,third_resource_id:'0',source_platform:1,path:slash(r.path),duration:us(t.duration),is_overlap:true,platform:'all',category_id:'100000',category_name:'',request_id:'',is_ai_transition:false,video_path:'',task_id:''};
     (d.materials.transitions||=[]).push(m);byKey.get(t.after).extra_material_refs.push(m.id);
   }
-  d.tracks=[...Object.values(tracks),originalAudio].filter(t=>t.segments.length);require('./end-effect.cjs').append(d,require('./end-effect.cjs').timing(manifest.draft.endEffect,manifest.duration),uid);require('./canvas-background.cjs').apply(d,manifest.backgroundColor);validate(d);return d;
+  d.tracks=[...Object.values(tracks),originalAudio].filter(t=>t.segments.length);require('./end-effect.cjs').append(d,require('./end-effect.cjs').timing(manifest.draft.endEffect,manifest.duration),uid);require('./canvas-background.cjs').apply(d,manifest.backgroundColor);for(const c of manifest.clips)require('./sound-effects.cjs').append(d,c.soundEffects||[],c.start,c.duration);require('./sound-effects.cjs').mergeTracks(d);validate(d);return d;
 }
 function validate(d){
   const ids=new Set(),materials=new Map();for(const a of Object.values(d.materials))for(const m of a){if(!m.id||ids.has(m.id))throw Error('ID material trùng.');ids.add(m.id);materials.set(m.id,m);}

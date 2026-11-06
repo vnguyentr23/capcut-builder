@@ -6,11 +6,11 @@ function materialMap(d){return new Map(Object.entries(d.materials).flatMap(([typ
 function pack(d,segments,fingerprint,name){
  const map=materialMap(d),start=segments[0].target_timerange.start,stop=end(segments.at(-1));
  const texts=d.tracks.filter(t=>t.type==='text').flatMap(t=>t.segments.filter(s=>s.target_timerange.start>=start-2&&end(s)<=stop+2).map(s=>({track:{...clone(t),segments:[]},segment:clone(s)})));
- const materials={},all=[...segments,...texts.map(t=>t.segment)];
+ const sounds=require('./sound-effects.cjs').capture(d,start,stop),materials={},all=[...segments,...texts.map(t=>t.segment),...sounds.map(t=>t.segment)];
  for(const s of all)for(const id of [s.material_id,...s.extra_material_refs||[]]){const m=map.get(id);if(m&&m.type!=='transitions'){(materials[m.type]??=[]);if(!materials[m.type].some(x=>x.id===id))materials[m.type].push(clone(m.value));}}
  const local=s=>{s=clone(s);s.target_timerange.start-=start;if(s.render_timerange?.duration>0)s.render_timerange.start-=start;s.extra_material_refs=(s.extra_material_refs||[]).filter(id=>map.get(id)?.type!=='transitions');return s;};
  const m=map.get(segments[0].material_id).value;
- return {id:uid(),name:name||m.material_name||path.basename(m.path),path:m.path,fingerprint,materials,segments:segments.map(local),texts:texts.map(t=>({...t,segment:local(t.segment)}))};
+ return {id:uid(),name:name||m.material_name||path.basename(m.path),path:m.path,fingerprint,materials,segments:segments.map(local),texts:texts.map(t=>({...t,segment:local(t.segment)})),sounds:sounds.map(t=>({...t,segment:local(t.segment)}))};
 }
 function init(p){
  if(p.editor)return p.editor;
@@ -29,7 +29,7 @@ function summary(u){
  if(u.empty)return {id:u.id,empty:true,reason:u.reason,name:'Vị trí trống',duration:0,parts:[],edited:false};
  const parts=u.segments.map(s=>{const m=u.materials.videos.find(m=>m.id===s.material_id),r=s.source_timerange||{start:0,duration:s.target_timerange.duration};return {timelineDuration:s.target_timerange.duration/1e6,start:r.start/1e6,end:(r.start+r.duration)/1e6,speed:s.speed||1,volume:s.volume??1,audioMode:audioMode(u,s),sourceDuration:(m.duration||r.start+r.duration)/1e6,protected:!!s.common_keyframes?.length||!!s.keyframe_refs?.length||!!(u.materials.speeds||[]).find(m=>s.extra_material_refs?.includes(m.id)&&m.curve_speed)};});
  const edited=parts.length>1||parts.some(s=>s.start>0||Math.abs(s.end-s.sourceDuration)>.04||s.speed!==1||s.volume!==1||s.audioMode!=='original')||u.segments.some(s=>s.common_keyframes?.length||s.clip?.scale?.x!==1||s.clip?.scale?.y!==1||s.clip?.transform?.x||s.clip?.transform?.y||s.clip?.rotation);
- return {id:u.id,name:u.name,path:u.path,fingerprint:u.fingerprint,kind:u.materials.videos[0]?.type==='photo'?'image':'video',duration:u.segments.reduce((n,s)=>n+s.target_timerange.duration,0)/1e6,parts,edited};
+ return {id:u.id,name:u.name,path:u.path,fingerprint:u.fingerprint,kind:u.materials.videos[0]?.type==='photo'?'image':'video',duration:u.segments.reduce((n,s)=>n+s.target_timerange.duration,0)/1e6,parts,edited:edited||!!u.sounds?.length,soundEffects:require('./sound-effects.cjs').describe(u)};
 }
 function present(p){const e=init(p);return {id:p.id,name:p.name,installed:p.installed,revision:e.revision,settings:p.settings,edited:!!p.editedAt,duration:p.draft.duration/1e6,blocks:e.blocks.map((b,i)=>({id:b.id,hook:i===0,units:b.units.map(summary)})),ending:e.ending?summary(e.ending):null,assignments:p.assignments,canUndo:!!p.editUndo?.length};}
 function locate(e,id){for(const b of e.blocks){const i=b.units.findIndex(u=>u.id===id);if(i>=0)return {b,i,u:b.units[i]};}if(e.ending?.id===id)return {u:e.ending,ending:true};throw Error('Footage không còn tồn tại.');}
@@ -41,14 +41,14 @@ function rebuild(p){
   for(const [type,items] of Object.entries(u.materials))for(const m of items){const c=clone(m);c.id=ids.get(m.id);(out.materials[type]??=[]).push(c);}
   const copy=s=>{s=clone(s);s.id=uid();s.material_id=ids.get(s.material_id);s.extra_material_refs=(s.extra_material_refs||[]).map(id=>ids.get(id)).filter(Boolean);s.target_timerange.start+=start;if(s.render_timerange?.duration>0)s.render_timerange.start+=start;return s;};
   const segs=u.segments.map(copy);video.segments.push(...segs);
-  for(const t of u.texts)out.tracks.push({...clone(t.track),id:uid(),segments:[copy(t.segment)]});
+  for(const t of [...u.texts,...u.sounds||[]])out.tracks.push({...clone(t.track),id:uid(),segments:[copy(t.segment)]});
   const duration=u.segments.reduce((n,s)=>n+s.target_timerange.duration,0);cursor+=duration;
   ledger.push({unitId:u.id,block:bi+1,slot:slot+1,newStart:start,duration,end:cursor,identity:u.fingerprint,segmentIds:segs.map(s=>s.id)});
   return {name:u.name,path:u.path,fingerprint:u.fingerprint,sourceStart:u.segments[0].source_timerange?.start||0,duration,parts:summary(u).parts.map(s=>({start:s.start,duration:s.end-s.start,speed:s.speed,volume:s.volume}))};
  }
  e.blocks.forEach((b,bi)=>{const start=cursor,clips=b.units.flatMap((u,i)=>u.empty?[]:[append(u,bi,i)]);blocks.push({index:bi,hook:bi===0,start,duration:cursor-start,clips});if(cursor>start&&bi<e.blocks.length-1&&(e.ending||e.blocks.slice(bi+1).some(next=>next.units.some(u=>!u.empty)))&&video.segments.length)for(const t of b.transitions){const m=clone(t);m.id=uid();m.duration=Math.min(m.duration||350000,video.segments.at(-1).target_timerange.duration);(out.materials.transitions??=[]).push(m);video.segments.at(-1).extra_material_refs.push(m.id);}});
  if(e.ending){append(e.ending,-1,0);blocks.at(-1).duration=cursor-blocks.at(-1).start;}
- out.duration=cursor;out.name=p.name;p.draft=out;p.ledger=ledger;p.blocks=blocks;
+ require('./sound-effects.cjs').mergeTracks(out);out.duration=cursor;out.name=p.name;p.draft=out;p.ledger=ledger;p.blocks=blocks;
  p.assignments=p.assignments.flatMap(a=>{const b=blocks[a.block];if(!b)return [];const delay=b.hook?Math.min((p.settings?.hookDelay??3)*1e6,b.duration):0,duration=b.duration-delay;if(duration<=0||duration>Math.round(a.sourceDuration*1e6))return [];return [{...a,start:b.start+delay,duration}];});
  p.signature=crypto.createHash('sha256').update(JSON.stringify(e.blocks.slice(1).flatMap(b=>b.units.map(u=>u.fingerprint)))).digest('hex');
 }
@@ -66,7 +66,7 @@ function setParts(u,parts){
   if(s.render_timerange?.duration>0)s.render_timerange={start:s.target_timerange.start,duration:s.target_timerange.duration};
   s.volume=p.audioMode==='mute'?0:p.volume;if(s.volume>0)s.last_nonzero_volume=s.volume;
  });
- for(const t of u.texts){const r=t.segment.target_timerange,first=spans.find(s=>r.start<s.oldEnd)||spans.at(-1),last=spans.find(s=>r.start+r.duration<=s.oldEnd+2)||spans.at(-1);const a=first.newStart+Math.max(0,(r.start-first.oldStart)/Math.max(1,first.oldEnd-first.oldStart))*first.duration,b=last.newStart+Math.min(1,(r.start+r.duration-last.oldStart)/Math.max(1,last.oldEnd-last.oldStart))*last.duration;t.segment.target_timerange={start:Math.round(a),duration:Math.max(1,Math.round(b-a))};}
+ for(const t of [...u.texts,...u.sounds||[]]){const r=t.segment.target_timerange,first=spans.find(s=>r.start<s.oldEnd)||spans.at(-1),last=spans.find(s=>r.start+r.duration<=s.oldEnd+2)||spans.at(-1);const a=first.newStart+Math.max(0,(r.start-first.oldStart)/Math.max(1,first.oldEnd-first.oldStart))*first.duration,b=last.newStart+Math.min(1,(r.start+r.duration-last.oldStart)/Math.max(1,last.oldEnd-last.oldStart))*last.duration;t.segment.target_timerange={start:Math.round(a),duration:Math.max(1,Math.round(b-a))};}
 }
 function load(store,id,projectId){const b=remix.get(store,id),allocationChanged=require('./remix-allocation.cjs').reconcile(store,b);if(allocationChanged)remix.save(store,b);const p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy bản nháp.');const before=JSON.stringify(p.settings),hadEditor=!!p.editor;init(p);p.settings=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);return {b,p,changed:!hadEditor||before!==JSON.stringify(p.settings)};}
 function open(store,id,projectId){const {b,p,changed}=load(store,id,projectId);if(changed)remix.save(store,b);return present(p);}
@@ -113,7 +113,7 @@ async function mutate(store,args){
    p.assignments=p.assignments.filter(a=>a.block!==index);p.assignments.push({block:index,path:song.path,name:song.name,fingerprint:song.fingerprint,sourceDuration:song.duration,start:block.start+(index===0?Math.min((p.settings?.hookDelay??3)*1e6,block.duration):0),duration});p.assignments.sort((a,z)=>a.block-z.block);
   }
   else if(op==='name'){if(nameErrors(args.name).length)throw Error(nameErrors(args.name).join(' '));if(b.projects.some(q=>q.id!==p.id&&q.name.toLowerCase()===args.name.toLowerCase()))throw Error('Tên trùng bản khác trong bộ.');p.name=args.name;}
-  else if(op==='parts')setParts(locate(e,args.unitId).u,args.parts);
+  else if(op==='parts'){const u=locate(e,args.unitId).u;setParts(u,args.parts);if(args.soundEffects)require('./sound-effects.cjs').set(u,args.soundEffects);}
   else if(op==='endingDuration'){if(!e.ending||summary(e.ending).kind!=='image'||!Number.isFinite(args.duration)||args.duration<.1||args.duration>86400)throw Error('Thời lượng ảnh không hợp lệ.');const n=Math.round(args.duration*1e6);e.ending.segments[0].target_timerange={start:0,duration:n};e.ending.segments[0].source_timerange={start:0,duration:n};e.ending.materials.videos[0].duration=n;}
   else if(op==='remove'){const at=locate(e,args.unitId);if(at.ending)e.ending=null;else{if(at.b.units.length===1)throw Error('Block cần ít nhất một footage; dùng Thay cảnh.');at.b.units.splice(at.i,1);}}
   else if(op==='swap'){const a=locate(e,args.unitId),z=locate(e,args.otherId);if(a.ending||z.ending)throw Error('Không hoán đổi phần kết thúc.');const used=require('./remix-allocation.cjs').others(b,p.id),exported=exportedFootage(store,b.channelId);for(const [target,u]of [[a,z.u],[z,a.u]])if(!target.b.hook&&!u.empty&&(used.has(u.fingerprint)||exported.has(u.fingerprint)))throw Error('Footage này đã được dùng ở Body video khác hoặc đã xuất.');[a.b.units[a.i],z.b.units[z.i]]=[z.u,a.u];}

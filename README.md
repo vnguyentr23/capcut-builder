@@ -208,3 +208,12 @@ Footage Body được giữ riêng cho từng video trong cùng bộ. Video đã
 Trong trình chỉnh sửa, dùng **＋** trên card trống để chọn footage bù từ bộ nguồn, hoặc **⇄** để hoán đổi với footage khác trong video. Có thể giữ ô trống: khi tạo CapCut, tool bỏ qua ô đó và ghép liền timeline; nhạc và chuyển cảnh theo thời lượng thực tế. Block trống không yêu cầu nhạc. Không thể tạo video hoàn toàn không có nội dung.
 
 Bộ cũ được rà soát khi mở chỉnh sửa và trước khi tạo CapCut. Những clip Body trùng giữa các bản nháp chỉ được giữ tại một video; các vị trí còn lại hiện ô trống. Hook vẫn có thể dùng footage đã xuất trước đó, nhưng luôn tuân theo danh sách đen.
+
+
+### Sound effect đi kèm footage
+
+- Trong **Thiết lập**, chọn **Thư mục sound effect** (lưu riêng cho kênh). Thiết lập này dùng chung cho Dựng video và Nhân bản; thư viện có tìm kiếm, nghe thử và quét lại.
+- Mở **Chỉnh sửa footage**, tại lớp **Sound effect** bấm **＋ Chọn âm thanh**. Kéo thanh âm thanh để đổi vị trí hoặc nhập vị trí, điểm bắt đầu trong file âm thanh, độ dài và âm lượng. Vị trí tính từ đầu đoạn footage đang giữ lại, không phải từ đầu video tổng.
+- Bấm **Áp dụng** để lưu. Khi phát footage trong cửa sổ chỉnh sửa hoặc trên card, sound effect phát/dừng và tua cùng video. Mute tiếng footage không tắt sound effect.
+- CapCut nhận track âm thanh gốc **Sound effects**, không render lại footage. Những sound effect không chồng thời gian nằm cùng track; phần chồng nhau được xếp thêm track để vẫn chỉnh sửa riêng. Phần vượt cuối footage được cắt khỏi timeline.
+- Trộn, thay cảnh từ bộ nguồn hoặc đổi chỗ giữ sound effect cùng footage. Gói chuyển máy chứa tham chiếu và hash file sound effect; máy nhận cần có các file âm thanh đó và chọn thư mục để liên kết lại.

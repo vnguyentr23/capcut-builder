@@ -1,3 +1,4 @@
+import soundEffects from '../sound-effects.cjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -84,6 +85,7 @@ export function analyze(draft, name, sourceId, sourcePath = '') {
     b.units.forEach((u, slot) => {u.slot = slot; u.blockId = b.id; u.hook = b.hook;});
     if (!b.units.length) issues.push(`Block ${i+1} có ${b.units.length} footage, cần kiểm tra ranh giới block.`);
   }
+  for(const u of units)u.sounds=soundEffects.capture(draft,u.start,u.end);
   for (const t of tracks.filter(t => t.type === 'text')) for (const s of t.segments) {
     const candidates = units.filter(u => s.target_timerange.start >= u.start - 2 && end(s) <= u.end + 2);
     if (candidates.length === 1) {candidates[0].texts.push({segment:s,track:t});continue;}
@@ -384,7 +386,7 @@ export function buildDraft(plan, allSources, {name, intro=null, authorStyle=null
   out.keyframes=Object.fromEntries(Object.keys(out.keyframes || {}).map(k=>[k,[]]));
   out.keyframe_graph_list=[];
   const videoTrack={...clone(original.draft.tracks.find(t=>t.type==='video')),id:uid(),segments:[]};
-  const textTracks=new Map(), importCache=new Map(), ledger=[];
+  const soundTracks=new Map(),textTracks=new Map(), importCache=new Map(), ledger=[];
   function importMaterial(source,id) {
     const key=`${source.sourceId}:${id}`;
     if(importCache.has(key)) return importCache.get(key);
@@ -422,6 +424,7 @@ export function buildDraft(plan, allSources, {name, intro=null, authorStyle=null
       textTracks.get(key).segments.push(c);
       if(c.target_timerange.start<newStart-2 || end(c)>newStart+u.duration+2)throw new Error('Chữ vượt ra khỏi footage sau khi xào.');
     }
+    for(const {segment,track} of u.sounds||[]){const key=u.sourceId+':'+track.id;if(!soundTracks.has(key))soundTracks.set(key,{...clone(track),id:uid(),segments:[]});soundTracks.get(key).segments.push(copySegment(source,segment,offset));}
     cursor+=u.duration;
     ledger.push({unitId:u.id,sourceProject:source.name,sourceBlock:source.blocks.findIndex(b=>b.id===u.blockId)+1,
       sourceSlot:u.slot+1,block:blockIndex+1,slot:slot+1,hook:blockIndex===0,identity:u.identity,
@@ -473,7 +476,7 @@ export function buildDraft(plan, allSources, {name, intro=null, authorStyle=null
     if(!lane){lane={...clone([...textTracks.values()][0]),id:uid(),segments:[]};lanes.push(lane);}lane.segments.push(s);
   }
   const audioTrack=buildMusicTrack(plan,blockRanges,byId,out,importMaterial);
-  out.tracks=[videoTrack,...lanes,...(audioTrack?[audioTrack]:[])];out.duration=cursor;
+  out.tracks=[videoTrack,...lanes,...soundTracks.values(),...(audioTrack?[audioTrack]:[])];out.duration=cursor;soundEffects.mergeTracks(out);
   const used=new Set(out.tracks.flatMap(t=>t.segments.flatMap(s=>[s.material_id,...s.extra_material_refs])));
   for(const [key,list] of Object.entries(out.materials))out.materials[key]=list.filter(m=>used.has(m.id));
   validateOutput(out,ledger,plan,byId,blockRanges);
@@ -549,7 +552,7 @@ export function validateOutput(out,ledger,plan,byId,blockRanges=[]) {
     if(plan.enforceDangerLimit&&ledger.filter(row=>row.block===block&&row.dangerous).length>2)throw new Error('Một block có quá hai footage từ B - NGUY HIỂM.');
   if(out.tracks.some(t=>t.type==='effect'))throw new Error('Chưa xóa effect track.');
   if((out.materials.transitions||[]).some(transition=>transition.duration!==2000000))throw new Error('Transition giữa các block không đúng 2 giây.');
-  const audio=out.tracks.filter(t=>t.type==='audio');
+  const audio=out.tracks.filter(t=>t.type==='audio'&&!soundEffects.isTrack(t));
   if(plan.blocks.some(b=>b.music)) {
     const expected=blockRanges.flatMap((range,index)=>musicWindowsForRange(range,index).map((window,windowIndex)=>({range,window,windowIndex})));
     if(audio.length!==1||audio[0].segments.length!==expected.length)throw new Error('Sai số cửa sổ nhạc theo block.');

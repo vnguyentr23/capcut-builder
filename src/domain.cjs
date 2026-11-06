@@ -80,7 +80,7 @@ function timeline(draft,media) {
     const range=clipRange(draft,m),duration=range.duration,frameCount=Math.round(duration*fps);
     const vertical=m.width>0&&m.height>0&&Math.abs(m.width/m.height-9/16)<0.02;
     clips.push({key:role==='body'?`body:${m.id}`:`${role}:${index}`,role,mediaId:m.id,path:m.path,fingerprint:m.fingerprint,
-      audioMode:draft.audioModes?.[m.id]||'original',kind:m.kind||'video',start:time,duration,sourceStart:range.sourceStart,sourceDuration:m.duration,width:m.width,height:m.height,source:m.source||'',
+      soundEffects:structuredClone(draft.soundEffects?.[m.id]||[]),audioMode:draft.audioModes?.[m.id]||'original',kind:m.kind||'video',start:time,duration,sourceStart:range.sourceStart,sourceDuration:m.duration,width:m.width,height:m.height,source:m.source||'',
       transform:vertical?structuredClone(draft.vertical):null,text:m.source?textLayout(draft.text):null});frames+=frameCount;time=frames/fps;
   };
   if(draft.intro&&draft.introPosition==='beforeHook') add(draft.intro,'intro',0);

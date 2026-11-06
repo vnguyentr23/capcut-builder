@@ -15,7 +15,7 @@ function remix(project,d){
   const clips=videos.filter(s=>row.segmentIds.includes(s.id)),last=clips.sort((a,b)=>(b.target_timerange.start+b.target_timerange.duration)-(a.target_timerange.start+a.target_timerange.duration))[0];
   if(!last)continue;attach(d,last,3000000);
   const end=last.target_timerange.start+last.target_timerange.duration;
-  for(const t of d.tracks.filter(t=>t.type==='audio'&&t.name!=='Nhạc nhân bản'))for(const s of t.segments)if(s.target_timerange.start>=last.target_timerange.start&&Math.abs(s.target_timerange.start+s.target_timerange.duration-end)<2)attach(d,s,3000000);
+  for(const t of d.tracks.filter(t=>t.type==='audio'&&t.name!=='Nhạc nhân bản'&&!require('./sound-effects.cjs').isTrack(t)))for(const s of t.segments)if(s.target_timerange.start>=last.target_timerange.start&&Math.abs(s.target_timerange.start+s.target_timerange.duration-end)<2)attach(d,s,3000000);
  }
 }
 module.exports={attach,remix};
