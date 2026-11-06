@@ -88,7 +88,7 @@ async function create(store,{stateId,sourceIds,channelId,name,sourceBatchId,opti
  await generate(store,batch,target.name==='Kênh gốc'?state.name:target.name);store.pref('remix-settings:'+channelId,JSON.stringify({...preferences(store,channelId),options:batch.options}));return save(store,batch);
 }
 async function generate(store,batch,prefix,onlyId=null,updating=false){
- const sources=await analyzeSources(batch.sources,batch.options),plans=mix(sources,batch.options,uid(),[...allSignatures(store,batch.rootId),...(batch.inheritedHistory||[])]),e=await engine();
+ const sources=await analyzeSources(batch.sources,batch.options),plans=mix(sources,{...batch.options,balance:false},uid(),[...allSignatures(store,batch.rootId),...(batch.inheritedHistory||[])]),e=await engine();
  const regenerated=new Set();
  const otherNames=store.db.prepare('SELECT summary FROM remix_batches WHERE channel_id=?').all(batch.channelId).flatMap(r=>(JSON.parse(r.summary).names||[]).map(n=>n.toLowerCase()));
  const taken=new Set([...otherNames,...store.history(batch.channelId).map(p=>p.name.toLowerCase()),...batch.projects.map(p=>p.name.toLowerCase())]);let num=0;
@@ -101,7 +101,7 @@ async function generate(store,batch,prefix,onlyId=null,updating=false){
   batch.projects[i]={id:previous?.id||uid(),name,locked:false,draft:result.draft,ledger:result.ledger,signature:p.signature,blocks,assignments:[],sourceName:p.source.name,reusedPercent:Math.round(100*body.filter(u=>bodyOriginal.has(u.identity)).length/Math.max(1,body.length)),installed:null,...(previous?.settings||batch.renderSettings?{settings:structuredClone(previous?.settings||batch.renderSettings)}:{})};
   regenerated.add(batch.projects[i].id);
  }
- require('./remix-allocation.cjs').reconcile(store,batch,sources,regenerated);for(const p of batch.projects){if(!regenerated.has(p.id)||p.installed)continue;const setting=p.settings||batch.renderSettings;if(setting?.reblockEnabled)require('./remix-editor.cjs').reblock(p,setting.blockSize);}return batch;
+ require('./remix-allocation.cjs').reconcile(store,batch,sources,regenerated);for(const p of batch.projects){if(!regenerated.has(p.id)||p.installed)continue;const setting=p.settings||batch.renderSettings;if(setting?.reblockEnabled)require('./remix-editor.cjs').reblock(p,setting.blockSize);}if(!onlyId&&(batch.balanceOptions?.enabled??batch.options.durationBalance??true)){batch.balanceReport=await require('./remix-balance.cjs').balance(batch,batch.balanceOptions||{target:batch.options.durationTarget??30,keepPosition:batch.options.keepPosition??true,mixHook:false},sources);}return batch;
 }
 async function appendSources(store,{id,stateId,sourceIds},savedSources=null,parentSourceId=null){
  const batch=get(store,id);

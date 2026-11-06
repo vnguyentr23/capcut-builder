@@ -222,3 +222,13 @@ Bộ cũ được rà soát khi mở chỉnh sửa và trước khi tạo CapCut
 ### Bộ nguồn độc lập với CapCut
 
 Lưu bộ nguồn đọc timeline trong database tool, không đọc thư mục dự án CapCut. Các lần tạo CapCut mới lưu lại timeline đầy đủ trong lịch sử. Với lịch sử cũ, tool tìm bộ nguồn đã lưu bằng ID dự án; nếu có manifest đầy đủ thì dựng timeline từ manifest. Timeline phục hồi được lưu vào lịch sử sau khi tất cả nguồn đã đọc thành công. Bản chỉ có danh sách footage đã dùng nhưng thiếu timeline cần nhập gói bộ nguồn từ máy cũ. Chỉnh sửa trực tiếp trong CapCut sau khi xuất không tự cập nhật vào tool. File footage, nhạc và sound effect vẫn cần tồn tại để xem và xuất.
+
+### Cân bằng thời lượng bộ nhân bản
+
+- Bộ mới mặc định cân bằng thời lượng sau cắt, mục tiêu chênh dài nhất–ngắn nhất 30 giây. Có thể tắt hoặc đổi mục tiêu trong hộp tạo bộ.
+- Bộ đã lưu: chọn **Cân bằng thời lượng → Xem trước cân bằng → Áp dụng**. Mở khóa những bản nháp muốn tham gia trước; video đã xuất CapCut luôn được giữ nguyên.
+- Ưu tiên trao đổi clip cùng ô trong block; chỉ chuyển nguyên block khi không tìm được trao đổi clip cải thiện thời lượng. Không giới hạn chênh số block còn một block.
+- Mặc định giữ giới hạn lệch tối đa một block so với nguồn. Có thể bỏ giới hạn này. Clip thêm thủ công không có trong nguồn lấy vị trí hiện tại làm mốc.
+- Hook mặc định giữ nguyên khi cân bằng bộ đã lưu. Hook, intro và phần kết thúc đều tính vào tổng thời lượng. Điểm cắt, âm thanh, credit và sound effect đi cùng footage; không tự cắt hoặc đổi tốc độ.
+- Kết quả xem trước không ghi dữ liệu. Kết quả hết hạn sau 10 phút hoặc khi bộ thay đổi. Thuật toán tìm cải thiện trong thời gian giới hạn, không đảm bảo đạt mục tiêu trong mọi bộ/ràng buộc.
+- Video thay đổi cần gán lại nhạc. Hoàn tác riêng cũ của những video này được xóa để tránh khôi phục clip trùng giữa các dự án.

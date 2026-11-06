@@ -40,6 +40,8 @@ app.whenReady().then(async()=>{
   let pendingRemixImport=null;
   const sfxChannel=p=>p.batchId?remix.get(store,p.batchId).channelId:p.stateId||current;
   const routes={
+    remixBalancePreview:async(p)=>require('./remix-balance.cjs').preview(store,p),
+    remixBalanceApply:async(p)=>require('./remix-balance.cjs').apply(store,p),
     sfxFolder:async(p={})=>{const key='sound-effects-folder:'+sfxChannel(p);if(p.choose){const r=await dialog.showOpenDialog(win,{title:'Thư mục sound effect',properties:['openDirectory']});if(!r.canceled)store.pref(key,r.filePaths[0]);}return store.pref(key)||'';},
     sfxLibrary:async(p={})=>{const folder=store.pref('sound-effects-folder:'+sfxChannel(p));if(!folder)return {folder:'',items:[]};const items=(await mediaLib.scan(folder,'audio',store)).filter(m=>!m.error&&m.duration>0);return {folder,items:items.map(m=>({path:m.path,name:m.name,fingerprint:m.fingerprint,sourceDuration:m.duration}))};},
     sfxPreview:async({path:file})=>{if(!file||!fs.existsSync(file)||!['.mp3','.wav','.m4a','.aac','.flac','.ogg','.wma'].includes(path.extname(file).toLowerCase()))throw Error('Không tìm thấy file sound effect.');const token=domain.uid();previewTokens.set(token,file);return {url:'ccb-media://'+token+'/audio'};},
