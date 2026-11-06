@@ -101,7 +101,7 @@ async function generate(store,batch,prefix,onlyId=null,updating=false){
   batch.projects[i]={id:previous?.id||uid(),name,locked:false,draft:result.draft,ledger:result.ledger,signature:p.signature,blocks,assignments:[],sourceName:p.source.name,reusedPercent:Math.round(100*body.filter(u=>bodyOriginal.has(u.identity)).length/Math.max(1,body.length)),installed:null,...(previous?.settings||batch.renderSettings?{settings:structuredClone(previous?.settings||batch.renderSettings)}:{})};
   regenerated.add(batch.projects[i].id);
  }
- require('./remix-allocation.cjs').reconcile(store,batch,sources,regenerated);return batch;
+ require('./remix-allocation.cjs').reconcile(store,batch,sources,regenerated);for(const p of batch.projects){if(!regenerated.has(p.id)||p.installed)continue;const setting=p.settings||batch.renderSettings;if(setting?.reblockEnabled)require('./remix-editor.cjs').reblock(p,setting.blockSize);}return batch;
 }
 async function appendSources(store,{id,stateId,sourceIds},savedSources=null,parentSourceId=null){
  const batch=get(store,id);

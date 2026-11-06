@@ -52,6 +52,17 @@ function rebuild(p){
  p.assignments=p.assignments.flatMap(a=>{const b=blocks[a.block];if(!b)return [];const delay=b.hook?Math.min((p.settings?.hookDelay??3)*1e6,b.duration):0,duration=b.duration-delay;if(duration<=0||duration>Math.round(a.sourceDuration*1e6))return [];return [{...a,start:b.start+delay,duration}];});
  p.signature=crypto.createHash('sha256').update(JSON.stringify(e.blocks.slice(1).flatMap(b=>b.units.map(u=>u.fingerprint)))).digest('hex');
 }
+// Repartition whole footage units; cuts, credits, audio edits and SFX travel together.
+function reblock(p,size){
+ if(!Number.isInteger(size)||size<1||size>2000)throw Error('Số footage mỗi block không hợp lệ.');
+ const e=init(p),body=e.blocks.slice(1),units=body.flatMap(b=>b.units);
+ if(body.every((b,i)=>b.units.length===(i===body.length-1?Math.min(size,units.length-i*size):size))&&body.length===Math.ceil(units.length/size))return false;
+ const transition=body.find(b=>b.transitions?.length)?.transitions||e.blocks[0]?.transitions||[];
+ const blocks=[];for(let i=0;i<units.length;i+=size)blocks.push({id:uid(),hook:false,transitions:clone(transition),units:units.slice(i,i+size)});
+ e.blocks=[e.blocks[0],...blocks];
+ // Old Body assignments describe different intervals. Keep Hook, require fresh Body songs.
+ p.assignments=(p.assignments||[]).filter(a=>a.block===0);rebuild(p);return true;
+}
 function setParts(u,parts){
  if(parts.length!==u.segments.length)throw Error('Số đoạn cắt không hợp lệ.');let cursor=0;const spans=[];
  u.segments.forEach((s,i)=>{const p=parts[i],old=summary(u).parts[i],m=u.materials.videos.find(m=>m.id===s.material_id),max=(m.duration||0)/1e6;
@@ -79,7 +90,7 @@ async function mutate(store,args){
  if(op==='undo'){const prev=p.editUndo?.pop();if(!prev)throw Error('Không có thao tác để hoàn tác.');p.editor=prev.editor;p.name=prev.name;p.assignments=prev.assignments;p.settings=prev.settings??p.settings;p.editor.revision=e.revision+1;}
  else {
   (p.editUndo??=[]).push({editor:clone(e),name:p.name,assignments:clone(p.assignments),settings:clone(p.settings)});p.editUndo=p.editUndo.slice(-5);
-  if(op==='settings'){p.settings=require('./remix-settings.cjs').validate(clone(args.settings));}
+  if(op==='settings'){p.settings=require('./remix-settings.cjs').validate(clone(args.settings));if(p.settings.reblockEnabled)reblock(p,p.settings.blockSize);}
   else if(op==='repairCopyright'){
    const sources=await remix.analyzeSources(b.sources);require('./remix-allocation.cjs').reconcile(store,b,sources);
   }
@@ -139,4 +150,4 @@ function copyForExport(store,id,projectId,existingNames=[]){
  const base=source.name.replace(/_v\d+$/i,'').slice(0,85);let version=2,name;do{name=base+'_v'+version++;}while(names.has(name.toLocaleLowerCase()));
  const p=clone(source);p.id=uid();p.name=name;p.draft.name=name;p.draft.id=uid();p.installed=null;p.locked=true;p.editUndo=[];p.copiedFrom=source.id;p.editedAt=new Date().toISOString();init(p);p.editor.revision=0;p.settings=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);b.projects.push(p);require('./remix-allocation.cjs').reconcile(store,b);remix.save(store,b);return present(p);
 }
-module.exports={copyForExport,open,load,present,summary,pack,init,rebuild,setParts,mutate,candidates,locate};
+module.exports={reblock,copyForExport,open,load,present,summary,pack,init,rebuild,setParts,mutate,candidates,locate};
