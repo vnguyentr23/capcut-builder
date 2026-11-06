@@ -85,7 +85,7 @@ async function importHookFiles(files,index){if(busy||!files.length)return;drag=n
 $('#pickHook').onclick=async()=>{const files=await api('chooseHooks');await importHookFiles(files,state.draft.hook.length);};
 document.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files'))e.preventDefault();});
 document.addEventListener('drop',e=>{if(e.dataTransfer?.files.length)e.preventDefault();});
-function addHook(id){if(busy)return;const m=media.get(id);if(state.draft.hook.some(h=>media.get(h.id)?.fingerprint===m?.fingerprint)){toast('Footage này đã có trong Hook.');return;}state.draft.hook.push({id,allowBody:false});changed();renderHook();renderGroups();renderBody();}
+function addHook(id){if(busy)return;const m=media.get(id);if(m?.copyrightBlocked){toast('Bị chặn bản quyền: '+m.copyrightBlocked,true);return;}if(state.draft.hook.some(h=>media.get(h.id)?.fingerprint===m?.fingerprint)){toast('Footage này đã có trong Hook.');return;}state.draft.hook.push({id,allowBody:false});changed();renderHook();renderGroups();renderBody();}
 function excludedFootage(){return new Set([...state.groups.flatMap(g=>g.excluded||[]),...(state.draft.excluded||[])]);}
 async function deleteFootage(groupId,mediaId,mediaIds=null){
   if(busy)return;
@@ -102,7 +102,7 @@ async function deleteFootage(groupId,mediaId,mediaIds=null){
   toast('Đã xóa '+(r.removedCount||1)+' footage. Body: '+bodyCountText()+'.'+(r.removedHooks?' Đã bỏ khỏi Hook.':''),!state.draft.body.length);
 });}
 function hookFingerprints(){return new Set(state.draft.hook.map(h=>media.get(h.id)?.fingerprint).filter(Boolean));}
-function visibleGroupIds(group){const hook=hookFingerprints(),excluded=excludedFootage(),search=$('#search').value.toLowerCase(),unused=$('#unusedOnly').checked;return group.items.filter(id=>{const m=media.get(id);return m&&!hook.has(m.fingerprint)&&!excluded.has(m.fingerprint)&&(!search||(m.name+' '+m.source).toLowerCase().includes(search))&&(!unused||!used.has(m.fingerprint));});}
+function visibleGroupIds(group){const hook=hookFingerprints(),excluded=excludedFootage(),search=$('#search').value.toLowerCase(),unused=$('#unusedOnly').checked;return group.items.filter(id=>{const m=media.get(id);return m&&!m.copyrightBlocked&&!hook.has(m.fingerprint)&&!excluded.has(m.fingerprint)&&(!search||(m.name+' '+m.source).toLowerCase().includes(search))&&(!unused||!used.has(m.fingerprint));});}
 function lockedCount(group){const items=new Set(group.items);return new Set((group.pinned||[]).filter(id=>items.has(id))).size;}
 function patternGroups(){const byId=new Map(state.groups.map(g=>[g.id,g]));return [...new Set(state.draft.pattern)].map(id=>byId.get(id)).filter(Boolean);}
 function renderGroups(){

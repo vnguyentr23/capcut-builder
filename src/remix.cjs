@@ -34,7 +34,7 @@ async function analyzeSources(sources,options={}){
   // A terminal image is an ending, never a randomly distributed body slot.
   const last=a.blocks.at(-1),tail=last?.units.at(-1);
   if(tail&&/\.(png|jpe?g|webp|bmp)$/i.test(tail.path)){a.ending=last.units.pop();if(!last.units.length)a.blocks.pop();}
-  for(const [i,b] of a.blocks.entries()){b.hook=i===0;for(const [slot,u] of b.units.entries()){u.slot=slot;u.blockId=b.id;u.hook=i===0;u.identity=src.fingerprints?.[norm(u.path)]||u.identity;}}
+  for(const [i,b] of a.blocks.entries()){b.hook=i===0;for(const [slot,u] of b.units.entries()){u.slot=slot;u.blockId=b.id;u.hook=i===0;u.identity=src.fingerprints?.[norm(u.path)]||u.identity;u.materials={texts:(u.texts||[]).map(t=>src.draft.materials.texts?.find(m=>m.id===t.segment.material_id)).filter(Boolean)};}}
   a.signature=signature(a.blocks);return a;
  });
 }
@@ -99,7 +99,7 @@ async function generate(store,batch,prefix,onlyId=null,updating=false){
   let name=previous?.name;if(!name){do{name=prefix+'_'+(++num);}while(taken.has(name.toLowerCase()));taken.add(name.toLowerCase());}
   if(onlyId||updating){require('./remix-unused-plan.cjs')(p,sources,blocked||require('./remix-used.cjs')(store,batch.channelId));p.signature=signature(p.blocks);if(allSignatures(store,batch.rootId).includes(p.signature))throw Error('Không đủ tổ hợp footage chưa dùng để tạo thứ tự mới. Bản nháp được giữ nguyên.');}
   if(updating)for(const block of p.blocks.slice(1))for(const unit of block.units)blocked.add(unit.identity);
-  const result=e.buildDraft(p,sources,{name}),bodyOriginal=new Set(p.source.blocks.slice(1).flatMap(b=>b.units.map(u=>u.identity))),body=p.blocks.slice(1).flatMap(b=>b.units);
+  p.channelId=batch.channelId;require('./blacklist-plan.cjs')(store,p,sources);p.signature=signature(p.blocks);const result=e.buildDraft(p,sources,{name}),bodyOriginal=new Set(p.source.blocks.slice(1).flatMap(b=>b.units.map(u=>u.identity))),body=p.blocks.slice(1).flatMap(b=>b.units);
   const blocks=p.blocks.map((b,index)=>{const entries=result.ledger.filter(r=>r.block===index+1);return {index,hook:index===0,start:Math.min(...entries.map(r=>r.newStart)),duration:entries.reduce((n,r)=>n+r.duration,0),clips:b.units.map(u=>({name:u.name,path:u.path,fingerprint:u.identity,sourceStart:u.segments[0].source_timerange?.start||0,duration:u.duration,parts:u.segments.map(s=>({start:(s.source_timerange?.start||0)/1e6,duration:(s.source_timerange?.duration||s.target_timerange.duration)/1e6,speed:s.speed||1,volume:s.volume??1}))}))};});
   if(p.source.ending)blocks.at(-1).duration+=p.source.ending.duration;
   batch.projects[i]={id:previous?.id||uid(),name,locked:false,draft:result.draft,ledger:result.ledger,signature:p.signature,blocks,assignments:[],sourceName:p.source.name,reusedPercent:Math.round(100*body.filter(u=>bodyOriginal.has(u.identity)).length/Math.max(1,body.length)),installed:null,...(previous?.settings||batch.renderSettings?{settings:structuredClone(previous?.settings||batch.renderSettings)}:{})};
@@ -203,9 +203,9 @@ async function prepare(project,base,options={}){
  await duck.apply(manifest,{...options,analyze:options.analyze||(c=>duck.levels({...c,duration:c.sourceDuration}))});
  return withMusic(project,settings,manifest.audio.map(a=>({...a,start:Math.round(a.start*1e6),duration:Math.round((a.start+a.duration)*1e6)-Math.round(a.start*1e6),sourceStart:Math.round(a.sourceStart*1e6),fadeOut:Math.round(a.fadeOut*1e6)})));
 }
-function check(batch){
+function check(batch,store){
  const missing=new Set(),issues=[];if(!batch.projects.length)issues.push('Bộ nguồn chưa có bản nhân bản.');
- for(const p of batch.projects){if(p.installed)continue;const settings=require('./remix-settings.cjs').effective(p,batch.renderSettings||batch.settings);try{require('./remix-settings.cjs').validate(settings);}catch(e){issues.push(p.name+': '+e.message);}for(const m of p.draft.materials.videos||[])if(m.path&&(!fs.existsSync(m.path)||(batch.transferIssues||[]).some(i=>norm(i.path)===norm(m.path))))missing.add(m.path);for(const a of p.assignments)if(!fs.existsSync(a.path))missing.add(a.path);
+ for(const p of batch.projects){if(p.installed)continue;if(store)for(const name of require('./blacklist.cjs').projectIssues(store,p))issues.push(p.name+': Bị chặn bản quyền: '+name);const settings=require('./remix-settings.cjs').effective(p,batch.renderSettings||batch.settings);try{require('./remix-settings.cjs').validate(settings);}catch(e){issues.push(p.name+': '+e.message);}for(const m of p.draft.materials.videos||[])if(m.path&&(!fs.existsSync(m.path)||(batch.transferIssues||[]).some(i=>norm(i.path)===norm(m.path))))missing.add(m.path);for(const a of p.assignments)if(!fs.existsSync(a.path))missing.add(a.path);
   if(p.blocks.some(b=>b.clips.some(c=>!/^([a-f0-9]{64})$/i.test(c.fingerprint||''))))issues.push(p.name+': footage chưa có dấu vân tay. Khôi phục file nguồn rồi trộn lại.');
   if(nameErrors(p.name).length)issues.push(p.name+': tên không hợp lệ.');
   if(p.assignments.length!==p.blocks.filter(b=>!b.hook||b.duration>(settings.hookDelay??3)*1e6).length)issues.push(p.name+': chưa gán đủ nhạc.');
@@ -216,12 +216,12 @@ function check(batch){
  return {ok:!missing.size&&!issues.length,missing:[...missing],issues};
 }
 async function install(store,id,adapter,progress=()=>{},projectId=null){
- const b=get(store,id),selected=b.projects.filter(p=>!projectId||p.id===projectId);if(!selected.length)throw Error('Không tìm thấy bản nháp.');const pre=check({...b,projects:selected});if(!pre.ok)throw Error([...pre.issues,...pre.missing.map(p=>'Thiếu file: '+p)].join('\n'));
+ const b=get(store,id),selected=b.projects.filter(p=>!projectId||p.id===projectId);if(!selected.length)throw Error('Không tìm thấy bản nháp.');const pre=check({...b,projects:selected},store);if(!pre.ok)throw Error([...pre.issues,...pre.missing.map(p=>'Thiếu file: '+p)].join('\n'));
  const state=store.get(b.channelId),detected=await adapter.detect(state.draft.destination);if(!detected.compatible)throw Error(detected.reason);
  const writer=require('./capcut-writer.cjs');if(await writer.isRunning())throw Error('Lưu và đóng CapCut trước khi tạo bộ dự án.');
  const names=new Set(detected.existingNames.map(n=>n.toLowerCase()));for(const p of selected.filter(p=>!p.installed))if(names.has(p.name.toLowerCase()))throw Error('Tên đã tồn tại trong CapCut: '+p.name);
  for(const [index,p] of selected.entries())if(!p.installed){
-  const draft=await prepare(p,b.renderSettings||b.settings,{progress,store});require('./canvas-background.cjs').apply(draft,store.get(b.channelId).videoBackgroundColor||'#000000');writer.validate(draft);
+  const draft=await prepare(p,b.renderSettings||b.settings,{progress,store});require('./canvas-background.cjs').apply(draft,store.get(b.channelId).videoBackgroundColor||'#000000');const violations=require('./blacklist.cjs').projectIssues(store,{...p,draft});if(violations.length)throw Error('Bị chặn bản quyền: '+violations.join(', '));writer.validate(draft);
   const manifest={name:p.name,remixBatchId:b.id,draft:{...defaults(),name:p.name},clips:p.blocks.flatMap(bl=>bl.clips.map(c=>({...c,role:bl.hook?'hook':'body'})))};
   const result=await writer.install(manifest,detected.destination,[],writer.isRunning,draft);
   p.installed=result.path;p.locked=true;

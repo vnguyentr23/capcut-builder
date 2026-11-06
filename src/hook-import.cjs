@@ -5,7 +5,7 @@ async function importHook(state,files,index,store){
   const excluded=new Set([...state.groups.flatMap(g=>g.excluded||[]),...(state.draft.excluded||[])]);
   for(const file of files){try{
     if(typeof file!=='string'||!['.mp4','.mov','.mkv','.avi','.webm','.m4v','.mts'].includes(path.extname(file).toLowerCase()))throw Error('Hook chỉ nhận video.');
-    const m=await inspect(file,store);if(m.error||!(m.duration>0&&m.width>0&&m.height>0))throw Error('Không đọc được video.');
+    const m=await inspect(file,store);require('./blacklist.cjs').assertAllowed(store,m);if(m.error||!(m.duration>0&&m.width>0&&m.height>0))throw Error('Không đọc được video.');
     if(seen.has(m.fingerprint))throw Error('Video đã có trong Hook.');
     if(excluded.has(m.fingerprint))throw Error('Video đang bị loại khỏi lựa chọn; hãy khôi phục trước khi thêm.');
     seen.add(m.fingerprint);added.push({id:m.id,allowBody:false});

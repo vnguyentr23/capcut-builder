@@ -13,7 +13,7 @@ async function exportPackage(store,id,file){
  const library=state.groups.map(g=>({name:g.name,folder:g.folder,items:g.items.map(id=>store.media(id)).filter(Boolean).map(m=>({name:m.name,path:m.path,fingerprint:m.fingerprint,size:m.size}))}));
  for(const g of library)for(const m of g.items)resources.set(norm(m.path),m);
  const histories=channels.list(store,state.id).map(c=>({name:c.name,origin:c.id===c.root_id,used:[...store.used(c.id)],reserved:[...store.blocked(c.id,'')]}));
- const body={id:batch.id,nicheName:state.name,channelName:state.channelName,batch,resources:[...resources.values()],library,histories,history:remix.allSignatures(store,batch.rootId)};
+ const body={blacklist:require('./blacklist.cjs').list(store),id:batch.id,nicheName:state.name,channelName:state.channelName,batch,resources:[...resources.values()],library,histories,history:remix.allSignatures(store,batch.rootId)};
  const pkg={format:'ccb-remix',version:1,digest:digest(body),body};fs.writeFileSync(file,zlib.gzipSync(Buffer.from(JSON.stringify(pkg))));return {path:file,resources:resources.size,missing:[...resources.values()].filter(r=>!r.fingerprint).map(r=>r.path)};
 }
 function readPackage(file){if(fs.statSync(file).size>150*1024*1024)throw Error('Gói quá lớn (tối đa 150 MB).');const raw=fs.readFileSync(file),decoded=raw[0]===31&&raw[1]===139?zlib.gunzipSync(raw,{maxOutputLength:150*1024*1024}):raw;const p=JSON.parse(decoded.toString('utf8').replace(/^\uFEFF/,''),(k,v)=>{if(['__proto__','constructor','prototype'].includes(k))throw Error('Gói chứa khóa không hợp lệ.');return v;});if(p.format!=='ccb-remix'||p.version!==1||p.digest!==digest(p.body))throw Error('Gói không hợp lệ hoặc phiên bản chưa hỗ trợ.');if(!p.body?.batch||!Array.isArray(p.body.batch.sources)||!Array.isArray(p.body.batch.projects)||p.body.batch.projects.length>1000||p.body.batch.sources.length>1000||!p.body.batch.settings||typeof p.body.nicheName!=='string'||typeof p.body.channelName!=='string'||!Array.isArray(p.body.resources)||p.body.resources.length>100000)throw Error('Gói thiếu danh mục tài nguyên.');return p;}
@@ -42,7 +42,7 @@ async function importPackage(store,pkg,match){
  if(!state.draft.pattern.length)state.draft.pattern=state.groups.map(g=>g.id);
  store.db.exec('BEGIN IMMEDIATE');try{store.save(state);remix.save(store,b);
  for(const h of pkg.body.histories||[]){let c=channels.list(store,root.id).find(c=>h.origin?c.id===root.id:c.name===h.name);if(!c)c=channels.create(store,root.id,h.name);const historyId='transfer:'+pkg.body.id+':'+c.id;for(const fp of new Set([...(h.used||[]),...(h.reserved||[])]))store.db.prepare('INSERT OR IGNORE INTO reservations VALUES(?,?,?)').run(c.id,historyId,fp);for(const fp of h.used||[])store.db.prepare('INSERT OR IGNORE INTO usage VALUES(?,?,?,?)').run(c.id,fp,historyId,'body');}
- store.pref(key,b.id);store.db.exec('COMMIT');}catch(e){store.db.exec('ROLLBACK');throw e;}
+ if(pkg.body.blacklist)require('./blacklist.cjs').merge(store,pkg.body.blacklist);store.pref(key,b.id);store.db.exec('COMMIT');}catch(e){store.db.exec('ROLLBACK');throw e;}
  return {batch:b,alreadyImported:false};
 }
 function rebind(store,b,match){
