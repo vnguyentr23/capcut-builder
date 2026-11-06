@@ -214,15 +214,17 @@ function check(batch,store){
  return {ok:!missing.size&&!issues.length,missing:[...missing],issues};
 }
 async function install(store,id,adapter,progress=()=>{},projectId=null){
- const b=get(store,id),selected=b.projects.filter(p=>!projectId||p.id===projectId);if(!selected.length)throw Error('Không tìm thấy bản nháp.');if(require('./remix-allocation.cjs').reconcile(store,b))save(store,b);const pre=check({...b,projects:selected},store);if(!pre.ok)throw Error([...pre.issues,...pre.missing.map(p=>'Thiếu file: '+p)].join('\n'));
+ const b=get(store,id),selected=b.projects.filter(p=>projectId?p.id===projectId:!p.installed);if(!selected.length)throw Error('Không tìm thấy bản nháp.');if(require('./remix-allocation.cjs').reconcile(store,b))save(store,b);const pre=check({...b,projects:selected.map(p=>({...p,installed:null}))},store);if(!pre.ok)throw Error([...pre.issues,...pre.missing.map(p=>'Thiếu file: '+p)].join('\n'));
  const state=store.get(b.channelId),detected=await adapter.detect(state.draft.destination);if(!detected.compatible)throw Error(detected.reason);
  const writer=require('./capcut-writer.cjs');if(await writer.isRunning())throw Error('Lưu và đóng CapCut trước khi tạo bộ dự án.');
  const names=new Set(detected.existingNames.map(n=>n.toLowerCase()));for(const p of selected.filter(p=>!p.installed))if(names.has(p.name.toLowerCase()))throw Error('Tên đã tồn tại trong CapCut: '+p.name);
- for(const [index,p] of selected.entries())if(!p.installed){
+ for(const [index,p] of selected.entries())if(!p.installed||projectId){
+  let exportName=p.name;if(p.installed){let n=2;while(names.has(exportName.toLowerCase())||fs.existsSync(path.join(detected.destination,exportName)))exportName=p.name+" - xuất lại "+n++;}
   const draft=await prepare(p,b.renderSettings||b.settings,{progress,store});require('./canvas-background.cjs').apply(draft,store.get(b.channelId).videoBackgroundColor||'#000000');const violations=require('./blacklist.cjs').projectIssues(store,{...p,draft});if(violations.length)throw Error('Bị chặn bản quyền: '+violations.join(', '));writer.validate(draft);
-  const manifest={name:p.name,remixBatchId:b.id,draft:{...defaults(),name:p.name},clips:p.blocks.flatMap(bl=>bl.clips.map(c=>({...c,role:bl.hook?'hook':'body'})))};
+  draft.name=exportName;
+  const manifest={name:exportName,remixBatchId:b.id,remixProjectId:p.id,draft:{...defaults(),name:exportName},clips:p.blocks.flatMap(bl=>bl.clips.map(c=>({...c,role:bl.hook?'hook':'body'})))};
   const result=await writer.install(manifest,detected.destination,[],writer.isRunning,draft);
-  p.installed=result.path;p.locked=true;
+  p.installed=result.path;p.locked=true;names.add(exportName.toLowerCase());
   store.db.exec('BEGIN IMMEDIATE');try{const projectId=uid();store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(projectId,b.channelId,p.name,'REMIX_CREATED',result.path,new Date().toISOString(),JSON.stringify({...manifest,timelineSnapshot:result.timelineSnapshot||draft}));store.reserve(b.channelId,manifest.draft.id,manifest);for(const c of manifest.clips)store.db.prepare('INSERT OR IGNORE INTO usage VALUES(?,?,?,?)').run(b.channelId,c.fingerprint,projectId,c.role);save(store,b);store.db.exec('COMMIT');}catch(err){store.db.exec('ROLLBACK');throw Error('CapCut đã tạo '+p.name+' nhưng lưu lịch sử thất bại: '+err.message);}
   progress({done:index+1,total:b.projects.length,file:p.name});
  }

@@ -19,6 +19,11 @@ test('Create CapCut for selected draft only, retain native audio refs and leave 
   p.settings=require('../src/remix-settings.cjs').initial();p.settings.ducking.enabled=false;const root=path.join(dir,'capcut');fs.mkdirSync(root);fs.writeFileSync(path.join(root,'root_meta_info.json'),JSON.stringify({all_draft_store:[],draft_ids:[]}));const b={id:uid(),rootId:s.id,channelId:s.id,name:'Batch',sources:[],projects:[p,other],settings:defaults()};remix.save(store,b);
   const result=await remix.install(store,b.id,{detect:async()=>({compatible:true,destination:root,existingNames:[]})},()=>{},p.id);assert(result.projects[0].installed);assert.equal(result.projects[1].installed,null);assert.equal(store.history(s.id).length,1);
   const d=JSON.parse(fs.readFileSync(path.join(result.projects[0].installed,'draft_content.json')));const video=d.tracks.find(t=>t.type==='video');assert.deepEqual(video.segments[0].source_timerange,p.draft.tracks[0].segments[0].source_timerange);assert(d.materials.vocal_separations.some(m=>m.choice===2));
+  const firstPath=result.projects[0].installed,first=fs.readFileSync(path.join(firstPath,'draft_content.json'),'utf8'),count=result.projects.length;
+  const again=await remix.install(store,b.id,{detect:async()=>({compatible:true,destination:root,existingNames:[p.name]})},()=>{},p.id);
+  assert.equal(again.projects.length,count);assert.equal(again.projects[0].id,p.id);assert.notEqual(again.projects[0].installed,firstPath);assert.equal(fs.readFileSync(path.join(firstPath,'draft_content.json'),'utf8'),first);
+  const repeated=JSON.parse(fs.readFileSync(path.join(again.projects[0].installed,'draft_content.json')));assert.equal(repeated.name,p.name+' - xuất lại 2');assert.equal(repeated.duration,d.duration);const geometry=x=>x.tracks.find(t=>t.type==='video').segments.map(s=>({source:s.source_timerange,target:s.target_timerange,volume:s.volume,clip:s.clip,material:s.material_id}));assert.deepEqual(geometry(repeated),geometry(d));
+
  }finally{writer.isRunning=running;store.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
 
