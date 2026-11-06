@@ -346,3 +346,5 @@ body.bodyExpanded #bodyPreview{grid-template-columns:repeat(auto-fill,minmax(min
 @media(max-width:700px){.blAdd{grid-template-columns:1fr 1fr}.blAdd label:nth-of-type(2){grid-row:auto}.blAdd textarea{min-height:32px}#blAddSource{grid-column:2;grid-row:3}}
 
 .crUnblock{align-self:flex-start;font-size:11px;padding:5px 10px;border-color:#96585f;color:#efb4b9;background:#40282e}.crUnblock:hover{background:#583039}
+
+.rxEmpty{border:1px dashed #7d8994!important;background:#1b222a!important}.rxEmptyContent{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:10px;text-align:center;color:#9dafbf}.rxEmptyContent>span{font-size:26px}.rxEmptyContent small{font-size:10px}

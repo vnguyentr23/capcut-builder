@@ -200,3 +200,11 @@ Trong Thiết lập → Nhạc → Ưu tiên tiếng footage. Tính năng mặc 
 Tool xét RMS trung bình trên toàn đoạn footage sau cắt: có tiếng đáng kể thì hạ nhạc cho cả footage; gần im lặng, không có audio hoặc tắt tiếng thì giữ mức nhạc bình thường. Ngưỡng mặc định −32 dB, càng âm sâu càng nhạy. Không còn nâng/hạ nhạc theo các khoảng ngừng bên trong clip, không sử dụng cài đặt thời gian chờ của bản cũ.
 Nhạc được cắt ở ranh giới cần đổi âm lượng, các đoạn cùng mức liền nhau được gộp lại, thời gian nguồn nối tiếp nên không phát lại bài từ đầu. Fade cuối giữ nguyên thời lượng; nếu có footage ưu tiên giao với fade, giữ mức thấp hết fade. Có thể chỉnh tiếp các đoạn nhạc trong CapCut.
 Phân tích chạy khi tạo dự án hoặc manifest, dùng FFmpeg và tiếng gốc, không sửa file nguồn. Lọc lời trong CapCut chưa được phản ánh vào phân tích; đây là nhận diện mức âm thanh, không hiểu nội dung tiếng nói. Dự án CapCut đã tạo không tự thay đổi. Manifest lưu phương pháp footage-rms và các khoảng hạ nhạc để đối chiếu.
+
+### Ô trống trong bộ nhân bản
+
+Footage Body được giữ riêng cho từng video trong cùng bộ. Video đã tạo CapCut được giữ nguyên. Clip bị chặn hoặc đã dùng ở video khác được thay bằng footage hợp lệ cùng vị trí trong block (lệch tối đa một block); nếu không đủ thì giữ một card **Vị trí trống**.
+
+Trong trình chỉnh sửa, dùng **＋** trên card trống để chọn footage bù từ bộ nguồn, hoặc **⇄** để hoán đổi với footage khác trong video. Có thể giữ ô trống: khi tạo CapCut, tool bỏ qua ô đó và ghép liền timeline; nhạc và chuyển cảnh theo thời lượng thực tế. Block trống không yêu cầu nhạc. Không thể tạo video hoàn toàn không có nội dung.
+
+Bộ cũ được rà soát khi mở chỉnh sửa và trước khi tạo CapCut. Những clip Body trùng giữa các bản nháp chỉ được giữ tại một video; các vị trí còn lại hiện ô trống. Hook vẫn có thể dùng footage đã xuất trước đó, nhưng luôn tuân theo danh sách đen.

@@ -26,6 +26,7 @@ function init(p){
 }
 function audioMode(u,s){if(s.volume===0)return 'mute';const m=(u.materials.vocal_separations||[]).find(m=>s.extra_material_refs?.includes(m.id));return m?.choice===1?'removeVocals':m?.choice===2?'keepVocals':'original';}
 function summary(u){
+ if(u.empty)return {id:u.id,empty:true,reason:u.reason,name:'Vị trí trống',duration:0,parts:[],edited:false};
  const parts=u.segments.map(s=>{const m=u.materials.videos.find(m=>m.id===s.material_id),r=s.source_timerange||{start:0,duration:s.target_timerange.duration};return {timelineDuration:s.target_timerange.duration/1e6,start:r.start/1e6,end:(r.start+r.duration)/1e6,speed:s.speed||1,volume:s.volume??1,audioMode:audioMode(u,s),sourceDuration:(m.duration||r.start+r.duration)/1e6,protected:!!s.common_keyframes?.length||!!s.keyframe_refs?.length||!!(u.materials.speeds||[]).find(m=>s.extra_material_refs?.includes(m.id)&&m.curve_speed)};});
  const edited=parts.length>1||parts.some(s=>s.start>0||Math.abs(s.end-s.sourceDuration)>.04||s.speed!==1||s.volume!==1||s.audioMode!=='original')||u.segments.some(s=>s.common_keyframes?.length||s.clip?.scale?.x!==1||s.clip?.scale?.y!==1||s.clip?.transform?.x||s.clip?.transform?.y||s.clip?.rotation);
  return {id:u.id,name:u.name,path:u.path,fingerprint:u.fingerprint,kind:u.materials.videos[0]?.type==='photo'?'image':'video',duration:u.segments.reduce((n,s)=>n+s.target_timerange.duration,0)/1e6,parts,edited};
@@ -45,7 +46,7 @@ function rebuild(p){
   ledger.push({unitId:u.id,block:bi+1,slot:slot+1,newStart:start,duration,end:cursor,identity:u.fingerprint,segmentIds:segs.map(s=>s.id)});
   return {name:u.name,path:u.path,fingerprint:u.fingerprint,sourceStart:u.segments[0].source_timerange?.start||0,duration,parts:summary(u).parts.map(s=>({start:s.start,duration:s.end-s.start,speed:s.speed,volume:s.volume}))};
  }
- e.blocks.forEach((b,bi)=>{const start=cursor,clips=b.units.map((u,i)=>append(u,bi,i));blocks.push({index:bi,hook:bi===0,start,duration:cursor-start,clips});if(bi<e.blocks.length-1&&video.segments.length)for(const t of b.transitions){const m=clone(t);m.id=uid();m.duration=Math.min(m.duration||350000,video.segments.at(-1).target_timerange.duration);(out.materials.transitions??=[]).push(m);video.segments.at(-1).extra_material_refs.push(m.id);}});
+ e.blocks.forEach((b,bi)=>{const start=cursor,clips=b.units.flatMap((u,i)=>u.empty?[]:[append(u,bi,i)]);blocks.push({index:bi,hook:bi===0,start,duration:cursor-start,clips});if(cursor>start&&bi<e.blocks.length-1&&(e.ending||e.blocks.slice(bi+1).some(next=>next.units.some(u=>!u.empty)))&&video.segments.length)for(const t of b.transitions){const m=clone(t);m.id=uid();m.duration=Math.min(m.duration||350000,video.segments.at(-1).target_timerange.duration);(out.materials.transitions??=[]).push(m);video.segments.at(-1).extra_material_refs.push(m.id);}});
  if(e.ending){append(e.ending,-1,0);blocks.at(-1).duration=cursor-blocks.at(-1).start;}
  out.duration=cursor;out.name=p.name;p.draft=out;p.ledger=ledger;p.blocks=blocks;
  p.assignments=p.assignments.flatMap(a=>{const b=blocks[a.block];if(!b)return [];const delay=b.hook?Math.min((p.settings?.hookDelay??3)*1e6,b.duration):0,duration=b.duration-delay;if(duration<=0||duration>Math.round(a.sourceDuration*1e6))return [];return [{...a,start:b.start+delay,duration}];});
@@ -67,10 +68,10 @@ function setParts(u,parts){
  });
  for(const t of u.texts){const r=t.segment.target_timerange,first=spans.find(s=>r.start<s.oldEnd)||spans.at(-1),last=spans.find(s=>r.start+r.duration<=s.oldEnd+2)||spans.at(-1);const a=first.newStart+Math.max(0,(r.start-first.oldStart)/Math.max(1,first.oldEnd-first.oldStart))*first.duration,b=last.newStart+Math.min(1,(r.start+r.duration-last.oldStart)/Math.max(1,last.oldEnd-last.oldStart))*last.duration;t.segment.target_timerange={start:Math.round(a),duration:Math.max(1,Math.round(b-a))};}
 }
-function load(store,id,projectId){const b=remix.get(store,id),p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy bản nháp.');const before=JSON.stringify(p.settings),hadEditor=!!p.editor;init(p);p.settings=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);return {b,p,changed:!hadEditor||before!==JSON.stringify(p.settings)};}
+function load(store,id,projectId){const b=remix.get(store,id),allocationChanged=require('./remix-allocation.cjs').reconcile(store,b);if(allocationChanged)remix.save(store,b);const p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy bản nháp.');const before=JSON.stringify(p.settings),hadEditor=!!p.editor;init(p);p.settings=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);return {b,p,changed:!hadEditor||before!==JSON.stringify(p.settings)};}
 function open(store,id,projectId){const {b,p,changed}=load(store,id,projectId);if(changed)remix.save(store,b);return present(p);}
 const exportedFootage=require('./remix-used.cjs');
-async function candidates(store,id,projectId,unitId){const {b,p}=load(store,id,projectId),at=locate(p.editor,unitId),sources=await remix.analyzeSources(b.sources),exported=exportedFootage(store,b.channelId),used=new Set([...(at.b.hook?[]:exported),...p.editor.blocks.flatMap(b=>b.units.map(u=>u.fingerprint))]);return sources.flatMap(s=>s.blocks.flatMap((bl,bi)=>bl.units.flatMap((u,slot)=>slot===at.i&&((at.b.hook&&bi===0)||(!at.b.hook&&bi>0&&Math.abs(bi-p.editor.blocks.indexOf(at.b))<=1))&&!used.has(u.identity)&&!require('./blacklist.cjs').matcher(store)(u)?[{usedBefore:exported.has(u.identity),sourceId:s.sourceId,unitId:u.id,name:u.name||path.basename(u.path),path:u.path,sourceName:s.name,block:bi,slot,duration:u.duration/1e6}]:[])));}
+async function candidates(store,id,projectId,unitId){const {b,p}=load(store,id,projectId),at=locate(p.editor,unitId),sources=await remix.analyzeSources(b.sources),exported=exportedFootage(store,b.channelId),used=new Set([...(at.b.hook?[]:exported),...(at.b.hook?[]:require('./remix-allocation.cjs').others(b,p.id)),...p.editor.blocks.flatMap(b=>b.units.map(u=>u.fingerprint))]);return sources.flatMap(s=>s.blocks.flatMap((bl,bi)=>bl.units.flatMap((u,slot)=>slot===at.i&&((at.b.hook&&bi===0)||(!at.b.hook&&bi>0&&Math.abs(bi-p.editor.blocks.indexOf(at.b))<=1))&&!used.has(u.identity)&&!require('./blacklist.cjs').matcher(store)(u)?[{usedBefore:exported.has(u.identity),sourceId:s.sourceId,unitId:u.id,name:u.name||path.basename(u.path),path:u.path,sourceName:s.name,block:bi,slot,duration:u.duration/1e6}]:[])));}
 async function mutate(store,args){
  const {id,projectId,revision,op}=args,{b,p}=load(store,id,projectId),e=p.editor;
  if(p.installed)throw Error('Bản này đã tạo CapCut. Chỉnh tiếp trong CapCut hoặc tạo bản nhân bản mới.');
@@ -80,11 +81,7 @@ async function mutate(store,args){
   (p.editUndo??=[]).push({editor:clone(e),name:p.name,assignments:clone(p.assignments),settings:clone(p.settings)});p.editUndo=p.editUndo.slice(-5);
   if(op==='settings'){p.settings=require('./remix-settings.cjs').validate(clone(args.settings));}
   else if(op==='repairCopyright'){
-   const match=require('./blacklist.cjs').matcher(store),sources=await remix.analyzeSources(b.sources),exported=exportedFootage(store,b.channelId),chosen=new Set(e.blocks.flatMap(b=>b.units).filter(u=>!match(u)).map(u=>u.fingerprint));
-   for(let bi=0;bi<e.blocks.length;bi++)for(let slot=0;slot<e.blocks[bi].units.length;slot++){if(!match(e.blocks[bi].units[slot]))continue;let choice;
-    for(const source of sources){for(let index=bi===0?0:Math.max(1,bi-1);index<=(bi===0?0:bi+1);index++){const u=source.blocks[index]?.units[slot];if(u&&!match(u)&&!chosen.has(u.identity)&&(bi===0||!exported.has(u.identity))){choice={source,u};break;}}if(choice)break;}
-    if(!choice)throw Error('Không đủ footage sạch bản quyền cùng vị trí: block '+(bi+1)+', ô '+(slot+1)+'. Chưa thay đổi bản nháp.');e.blocks[bi].units[slot]=pack(choice.source.draft,choice.u.segments,choice.u.identity,choice.u.name);chosen.add(choice.u.identity);
-   }
+   const sources=await remix.analyzeSources(b.sources);require('./remix-allocation.cjs').reconcile(store,b,sources);
   }
   else if(op==='moveBlock'||op==='removeBlock'){
 
@@ -119,7 +116,7 @@ async function mutate(store,args){
   else if(op==='parts')setParts(locate(e,args.unitId).u,args.parts);
   else if(op==='endingDuration'){if(!e.ending||summary(e.ending).kind!=='image'||!Number.isFinite(args.duration)||args.duration<.1||args.duration>86400)throw Error('Thời lượng ảnh không hợp lệ.');const n=Math.round(args.duration*1e6);e.ending.segments[0].target_timerange={start:0,duration:n};e.ending.segments[0].source_timerange={start:0,duration:n};e.ending.materials.videos[0].duration=n;}
   else if(op==='remove'){const at=locate(e,args.unitId);if(at.ending)e.ending=null;else{if(at.b.units.length===1)throw Error('Block cần ít nhất một footage; dùng Thay cảnh.');at.b.units.splice(at.i,1);}}
-  else if(op==='swap'){const a=locate(e,args.unitId),z=locate(e,args.otherId);if(a.ending||z.ending)throw Error('Không hoán đổi phần kết thúc.');[a.b.units[a.i],z.b.units[z.i]]=[z.u,a.u];}
+  else if(op==='swap'){const a=locate(e,args.unitId),z=locate(e,args.otherId);if(a.ending||z.ending)throw Error('Không hoán đổi phần kết thúc.');const used=require('./remix-allocation.cjs').others(b,p.id),exported=exportedFootage(store,b.channelId);for(const [target,u]of [[a,z.u],[z,a.u]])if(!target.b.hook&&!u.empty&&(used.has(u.fingerprint)||exported.has(u.fingerprint)))throw Error('Footage này đã được dùng ở Body video khác hoặc đã xuất.');[a.b.units[a.i],z.b.units[z.i]]=[z.u,a.u];}
   else if(op==='replace'){
    const allowed=await candidates(store,id,projectId,args.unitId);if(!allowed.some(c=>c.sourceId===args.sourceId&&c.unitId===args.sourceUnitId))throw Error('Cảnh thay phải cùng vị trí trong block, chưa có trong video; riêng Body không dùng footage đã tạo CapCut của kênh này.');
    const sources=await remix.analyzeSources(b.sources),s=sources.find(s=>s.sourceId===args.sourceId),u=s.blocks.flatMap(b=>b.units).find(u=>u.id===args.sourceUnitId),at=locate(e,args.unitId);at.b.units[at.i]=pack(s.draft,u.segments,u.identity,u.name);
@@ -132,7 +129,7 @@ async function mutate(store,args){
   }else throw Error('Thao tác không hợp lệ.');
   e.revision++;
  }
- if(!['blockMusic','swapMusicHook'].includes(op))rebuild(p);p.editedAt=new Date().toISOString();p.locked=true;remix.save(store,b);return present(p);
+ require('./remix-allocation.cjs').reconcile(store,b);if(!['blockMusic','swapMusicHook'].includes(op))rebuild(p);p.editedAt=new Date().toISOString();p.locked=true;remix.save(store,b);return present(p);
 }
 function copyForExport(store,id,projectId,existingNames=[]){
  const b=remix.get(store,id),source=b.projects.find(p=>p.id===projectId);if(!source)throw Error('Không tìm thấy dự án.');if(!source.installed)throw Error('Dự án chưa tạo CapCut; hãy chỉnh bản nháp hiện tại.');
@@ -140,6 +137,6 @@ function copyForExport(store,id,projectId,existingNames=[]){
  for(const row of store.db.prepare('SELECT summary FROM remix_batches').all())for(const n of JSON.parse(row.summary).names||[])names.add(n.toLocaleLowerCase());
  for(const row of store.db.prepare('SELECT name FROM projects').all())names.add(row.name.toLocaleLowerCase());
  const base=source.name.replace(/_v\d+$/i,'').slice(0,85);let version=2,name;do{name=base+'_v'+version++;}while(names.has(name.toLocaleLowerCase()));
- const p=clone(source);p.id=uid();p.name=name;p.draft.name=name;p.draft.id=uid();p.installed=null;p.locked=true;p.editUndo=[];p.copiedFrom=source.id;p.editedAt=new Date().toISOString();init(p);p.editor.revision=0;p.settings=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);b.projects.push(p);remix.save(store,b);return present(p);
+ const p=clone(source);p.id=uid();p.name=name;p.draft.name=name;p.draft.id=uid();p.installed=null;p.locked=true;p.editUndo=[];p.copiedFrom=source.id;p.editedAt=new Date().toISOString();init(p);p.editor.revision=0;p.settings=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);b.projects.push(p);require('./remix-allocation.cjs').reconcile(store,b);remix.save(store,b);return present(p);
 }
 module.exports={copyForExport,open,load,present,summary,pack,init,rebuild,setParts,mutate,candidates,locate};

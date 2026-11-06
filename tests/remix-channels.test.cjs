@@ -31,7 +31,7 @@ test('Bộ ghi cài đúng draft nhân bản và hai timeline giống nhau trong
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ccb-remix-write-'));try{const e=await import('../src/remix/engine.mjs'),sources=await remix.analyzeSources([fixture(dir,1),fixture(dir,2)]),plan=remix.mix(sources,{mixHook:true},'writer')[0],d=e.buildDraft(plan,sources,{name:'Kênh_1'}).draft,original=JSON.stringify(d);const root=path.join(dir,'capcut');fs.mkdirSync(root);fs.writeFileSync(path.join(root,'root_meta_info.json'),JSON.stringify({all_draft_store:[],draft_ids:[]}));const result=await require('../src/capcut-writer.cjs').install({name:'Kênh_1'},root,[],async()=>false,d);const written=JSON.parse(fs.readFileSync(path.join(result.path,'draft_content.json'))),timeline=JSON.parse(fs.readFileSync(path.join(result.path,'Timelines',written.id,'draft_content.json')));assert.deepEqual(written,timeline);assert.deepEqual(written.tracks,d.tracks);assert.equal(written.name,'Kênh_1');assert.equal(JSON.stringify(d),original);}finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 
-test('Reroll filters exported Body across batches, preserves Hook reuse and fails atomically when exhausted',async()=>{
+test('Reroll filters exported Body across batches, preserves Hook reuse and retains empty slots when exhausted',async()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ccb-reroll-')),store=new Store(':memory:');
  try{
   const state=store.create('Reroll'),ch=channels.create(store,state.id,'Target');
@@ -41,12 +41,12 @@ test('Reroll filters exported Body across batches, preserves Hook reuse and fail
   const blocked=new Set(previous.blocks.flatMap(b=>b.clips.map(c=>c.fingerprint))),before=JSON.stringify(previous);
   const result=await remix.reroll(store,b.id,target.id),changed=result.projects[0];
   assert(changed.blocks.slice(1).flatMap(b=>b.clips).every(c=>!blocked.has(c.fingerprint)));
-  for(const [bi,block] of changed.blocks.entries())if(bi)for(const [slot,clip] of block.clips.entries()){const origin=(await remix.analyzeSources(source.sources)).flatMap(s=>s.blocks.map((b,i)=>({b,i}))).filter(x=>x.b.units[slot]?.identity===clip.fingerprint);assert(origin.some(x=>Math.abs(x.i-bi)<=1));}
+  for(const [bi,block] of require('../src/remix-editor.cjs').init(changed).blocks.entries())if(bi)for(const [slot,clip] of block.units.entries()){if(clip.empty)continue;const origin=(await remix.analyzeSources(source.sources)).flatMap(s=>s.blocks.map((b,i)=>({b,i}))).filter(x=>x.b.units[slot]?.identity===clip.fingerprint);assert(origin.some(x=>Math.abs(x.i-bi)<=1));}
   assert.equal(JSON.stringify(result.projects[1]),before);
   assert.deepEqual(result.projects[2],b.projects[2]);
   const analyzed=await remix.analyzeSources(source.sources),all=analyzed.flatMap(s=>s.blocks.flatMap(b=>b.units.map(u=>({fingerprint:u.identity}))));
   remix.save(store,{...source,id:uid(),channelId:ch.id,projects:[{id:uid(),name:'All',installed:'all-exported',blocks:[{clips:all}]}]});
-  const snapshot=JSON.stringify(remix.get(store,b.id));await assert.rejects(remix.reroll(store,b.id,target.id),/Không đủ footage/);assert.equal(JSON.stringify(remix.get(store,b.id)),snapshot);
+  const exhausted=await remix.reroll(store,b.id,target.id);assert(exhausted.projects[0].editor.blocks.slice(1).every(b=>b.units.every(u=>u.empty)));assert(exhausted.projects[0].blocks.slice(1).every(b=>b.clips.length===0));assert.equal(JSON.stringify(exhausted.projects[1]),before);
  }finally{store.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
 test('Append sources remixes only pending projects, retains exported projects and rejects repeated sources',async()=>{
