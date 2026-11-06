@@ -27,7 +27,7 @@ async function balance(batch,value={},sources=[]){
   if(!best)break;best();
  }
  const rows=[];let changed=0;
- projects.forEach((p,i)=>{const different=initial[i]!==JSON.stringify(p.editor.blocks.map(b=>b.units.map(u=>u.id)));rows.push({id:p.id,name:p.name,before:before[i],after:times[i],changed:different});if(!different)return;changed++;p.editor.revision++;p.editUndo=[];p.editedAt=new Date().toISOString();p.assignments=[];edit().rebuild(p);const source=batch.sources.find(s=>s.name===p.sourceName);if(source){const hashes=new Set(Object.values(source.fingerprints||{})),body=p.editor.blocks.slice(1).flatMap(b=>b.units).filter(u=>!u.empty);p.reusedPercent=Math.round(body.filter(u=>hashes.has(u.fingerprint)).length*100/Math.max(1,body.length));}batch.projects[batch.projects.findIndex(x=>x.id===p.id)]=p;});
+ projects.forEach((p,i)=>{const different=initial[i]!==JSON.stringify(p.editor.blocks.map(b=>b.units.map(u=>u.id)));rows.push({id:p.id,name:p.name,before:before[i],after:times[i],changed:different});if(!different)return;changed++;p.editor.revision++;p.editUndo=[];p.editedAt=new Date().toISOString();p.assignments=[];edit().rebuild(p);const source=sources.find(s=>p.sourceId?s.sourceId===p.sourceId:s.name===p.sourceName);if(source)p.sourceBodyHashes=[...new Set(source.blocks.slice(1).flatMap(b=>b.units.map(u=>u.identity)))];Object.assign(p,require('./remix.cjs').reuseStats(p));batch.projects[batch.projects.findIndex(x=>x.id===p.id)]=p;});
  const report={before:spread(before),after:spread(times),target:o.target,reached:spread(times)<=o.target+.001,changed,swaps,moves,limited,eligible:projects.length,skipped:original.length-projects.length,rows};batch.balanceOptions=o;batch.balanceReport=report;return report;
 }
 const pending=new Map();

@@ -87,7 +87,7 @@ app.whenReady().then(async()=>{
     channelSwitch:async(id)=>{const s=store.get(id);current=id;store.pref('active',id);store.pref('channel-active:'+s.rootNicheId,id);return view(s);},
     remixList:async(id)=>({batches:remix.list(store,id),sources:remix.sourceProjects(store,id),channels:channels.list(store,id)}),
     remixSettings:async(id)=>remix.preferences(store,id),
-    remixGet:async(id)=>(()=>{const b=remix.get(store,id),u=b.projects.length?remix.sourceUpdate(store,b):null;return {...remix.present(b),sourceUpdate:u?{name:u.source.name,count:u.newSources.length}:null};})(),
+    remixGet:async(id)=>(async()=>{const b=remix.get(store,id);await remix.refreshReuse(store,b);const u=b.projects.length?remix.sourceUpdate(store,b):null;return {...remix.present(b),sourceUpdate:u?{name:u.source.name,count:u.newSources.length}:null};})(),
     remixSaveSource:async(p)=>remix.present(await remix.saveSource(store,p)),
     remixCreate:async(p)=>remix.present(await remix.create(store,p)),
     remixAddToSource:async p=>remix.present(await remix.addToSource(store,p)),
