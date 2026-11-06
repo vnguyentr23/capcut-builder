@@ -41,7 +41,7 @@ function makeText(c,segment){
   segment.clip={scale:{x:p.scale,y:p.scale},rotation:0,transform:{x:-1+2*(p.marginLeft+w/2)/1920,y:-1+2*(p.marginBottom+h/2)/1080},flip:{horizontal:false,vertical:false},alpha:p.opacity};
   return m;
 }
-function build(manifest,catalog=[]){
+function build(manifest,catalog=[],options={}){
   if(nameErrors(manifest.name).length)throw Error('Tên dự án không hợp lệ.');
   const d=clone(template.base);Object.assign(d,{id:uid(),name:manifest.name,duration:us(manifest.duration),create_time:0,update_time:0,tracks:[],relationships:[],group_container:null,time_marks:null,keyframe_graph_list:[],cover:null,retouch_cover:null,extra_info:null,path:''});
   d.canvas_config={width:1920,height:1080,ratio:'16:9',background:null};d.config.video_mute=false;
@@ -83,16 +83,16 @@ function build(manifest,catalog=[]){
     const m={id:uid(),type:'transition',name:r.name,effect_id:r.effectId,resource_id:r.resourceId||r.effectId,third_resource_id:'0',source_platform:1,path:slash(r.path),duration:us(t.duration),is_overlap:true,platform:'all',category_id:'100000',category_name:'',request_id:'',is_ai_transition:false,video_path:'',task_id:''};
     (d.materials.transitions||=[]).push(m);byKey.get(t.after).extra_material_refs.push(m.id);
   }
-  d.tracks=[...Object.values(tracks),originalAudio].filter(t=>t.segments.length);require('./end-effect.cjs').append(d,require('./end-effect.cjs').timing(manifest.draft.endEffect,manifest.duration),uid);require('./canvas-background.cjs').apply(d,manifest.backgroundColor);for(const c of manifest.clips)require('./sound-effects.cjs').append(d,c.soundEffects||[],c.start,c.duration);require('./sound-effects.cjs').mergeTracks(d);validate(d);return d;
+  d.tracks=[...Object.values(tracks),originalAudio].filter(t=>t.segments.length);require('./end-effect.cjs').append(d,require('./end-effect.cjs').timing(manifest.draft.endEffect,manifest.duration),uid);require('./canvas-background.cjs').apply(d,manifest.backgroundColor);for(const c of manifest.clips)require('./sound-effects.cjs').append(d,c.soundEffects||[],c.start,c.duration,options);require('./sound-effects.cjs').mergeTracks(d);validate(d,options);return d;
 }
-function validate(d){
+function validate(d,{checkFiles=true}={}){
   const ids=new Set(),materials=new Map();for(const a of Object.values(d.materials))for(const m of a){if(!m.id||ids.has(m.id))throw Error('ID material trùng.');ids.add(m.id);materials.set(m.id,m);}
   let cursor=0;for(const t of d.tracks){if(ids.has(t.id))throw Error('ID track trùng.');ids.add(t.id);for(const s of t.segments){
     if(ids.has(s.id)||!materials.has(s.material_id)||s.extra_material_refs.some(id=>!materials.has(id)))throw Error('Tham chiếu CapCut không hợp lệ.');ids.add(s.id);
     const r=s.target_timerange;if(!Number.isSafeInteger(r.start)||!Number.isSafeInteger(r.duration)||r.start<0||r.duration<=0||r.start+r.duration>d.duration)throw Error('Thời gian CapCut không hợp lệ.');
     if(t.type==='video'){if(r.start!==cursor)throw Error('Timeline footage bị hở/chồng.');cursor+=r.duration;}
   }}if(cursor!==d.duration)throw Error('Sai tổng thời lượng.');
-  for(const m of [...d.materials.videos,...d.materials.audios])if(!fs.existsSync(m.path))throw Error('Media đã mất: '+m.path);
+  for(const m of [...d.materials.videos,...d.materials.audios])if(checkFiles&&!fs.existsSync(m.path))throw Error('Media đã mất: '+m.path);
 }
 async function install(manifest,root,catalog=[],running=isRunning,preparedDraft=null){
   if(await running())throw Error('CapCut đang mở. Hãy lưu và đóng CapCut, rồi bấm TẠO DỰ ÁN CAPCUT lại.');
