@@ -29,7 +29,7 @@ class Store {
     const insert=this.db.prepare('INSERT OR IGNORE INTO reservations VALUES(?,?,?)');
     for(const fp of fingerprints)if(fp)insert.run(niche,draftId,fp);
   }
-  blocked(niche,draftId){return new Set(this.db.prepare('SELECT DISTINCT fingerprint FROM reservations WHERE niche_id=? AND draft_id<>?').all(niche,draftId).map(r=>r.fingerprint));}
+  blocked(niche,draftId){return new Set(this.db.prepare("SELECT fingerprint FROM reservations WHERE niche_id=? AND draft_id<>? UNION SELECT u.fingerprint FROM usage u LEFT JOIN projects p ON p.id=u.project_id WHERE u.niche_id=? AND (p.id IS NULL OR COALESCE(json_extract(p.snapshot,'$.draft.id'),json_extract(p.snapshot,'$.projectId'),'')<>?)").all(niche,draftId,niche,draftId).map(r=>r.fingerprint));}
   list(){return this.db.prepare('SELECT id,name FROM niches WHERE id IN (SELECT root_id FROM channels) ORDER BY rowid').all();}
   deleteNiche(id){
     const state=this.get(id);id=state.rootNicheId||id;const scopes=require('./channels.cjs').list(this,id).map(c=>c.id);this.db.exec('BEGIN IMMEDIATE');

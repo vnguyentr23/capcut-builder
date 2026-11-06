@@ -53,15 +53,13 @@ function selectBody(draft,groups,media,used,{repair=false,partial=false}={}){
   const selected=new Set(),counts=new Map(groups.map(g=>[g.id,0])),result=new Array(draft.target),preferred=new Array(draft.target);
   const eligible=(m,g)=>m?.duration>0&&(!g?.lockedOnly||(g.pinned||[]).includes(m.id))&&m.width>0&&m.height>0&&!m.error&&!used.has(m.fingerprint)&&!blocked.has(m.fingerprint)&&!selected.has(m.fingerprint);
   const place=(m,g,i)=>{selected.add(m.fingerprint);counts.set(g.id,counts.get(g.id)+1);result[i]={id:m.id,groupId:g.id,requestedGroupId:preferred[i]?.id||draft.pattern[i%draft.pattern.length],slotIndex:i};};
-  const scarce=new Set();
-  if(draft.spreadScarce)for(const g of groups){const demand=Array.from({length:draft.target},(_,i)=>draft.pattern[i%draft.pattern.length]).filter(id=>id===g.id).length;const available=new Set(g.items.map(id=>media.get(id)).filter(m=>eligible(m,g)).map(m=>m.fingerprint)).size;if(available<demand)scarce.add(g.id);}
   const oldSlots=new Map((repair?draft.body.filter(b=>!b.supplementFor):[]).map((b,i)=>[b.slotIndex??i,b]));
   for(let i=0;i<draft.target;i++){
     const old=oldSlots.get(i),g=groupMap.get(old?.groupId),m=media.get(old?.id);
     preferred[i]=g||groupMap.get(draft.pattern[i%draft.pattern.length]);
     if(g&&g.items.includes(old.id)&&eligible(m,g)){place(m,g,i);result[i].requestedGroupId=old.requestedGroupId||old.groupId;if(old.priority)result[i].priority=true;}
   }
-  if(!repair){let slot=0;const active=new Set(draft.pattern);for(const id of (draft.pinPriority===false?[]:require('./ui/pin-order.js').ordered(draft,groups))){if(slot>=draft.target)break;const g=groups.find(g=>active.has(g.id)&&g.items.includes(id)&&(g.pinned||[]).includes(id)),m=media.get(id);if(g&&!scarce.has(g.id)&&eligible(m,g)){preferred[slot]=g;place(m,g,slot);result[slot].priority=true;slot++;}}for(let i=slot;i<draft.target;i++)preferred[i]=groupMap.get(draft.pattern[(i-slot)%draft.pattern.length]);}
+  if(!repair){let slot=0;const active=new Set(draft.pattern);for(const id of (draft.pinPriority===false?[]:require('./ui/pin-order.js').ordered(draft,groups))){if(slot>=draft.target)break;const g=groups.find(g=>active.has(g.id)&&g.items.includes(id)&&(g.pinned||[]).includes(id)),m=media.get(id);if(g&&eligible(m,g)){preferred[slot]=g;place(m,g,slot);result[slot].priority=true;slot++;}}for(let i=slot;i<draft.target;i++)preferred[i]=groupMap.get(draft.pattern[(i-slot)%draft.pattern.length]);}
   const positions=new Map();
   function take(g){let p=positions.get(g.id)||0;while(p<g.items.length){const m=media.get(g.items[p++]);positions.set(g.id,p);if(eligible(m,g))return m;}return null;}
   // Reserve every normal pattern slot before distributing shortages. This keeps
