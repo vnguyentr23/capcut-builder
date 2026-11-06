@@ -10,7 +10,7 @@ const mediaLib=require('./media.cjs');
 const {LocalCapCutAdapter,ManifestAdapter}=require('./adapter.cjs');
 const {preflight}=require('./preflight.cjs');
 const {pathToFileURL}=require('node:url');
-protocol.registerSchemesAsPrivileged([{scheme:'ccb-media',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true}}]);
+protocol.registerSchemesAsPrivileged([{scheme:'ccb-media',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true,corsEnabled:true}}]);
 const windowsIdentity=require('./windows-identity.cjs');
 app.setAppUserModelId(windowsIdentity.APP_ID);
 const previewTokens=new Map();

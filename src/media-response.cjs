@@ -1,7 +1,7 @@
 const fs=require('node:fs');const path=require('node:path');const {Readable}=require('node:stream');
 function mediaResponse(file,request){
- const size=fs.statSync(file).size,range=request.headers.get('range'),type={'.mp4':'video/mp4','.m4v':'video/mp4','.mov':'video/quicktime','.webm':'video/webm','.mkv':'video/x-matroska'}[path.extname(file).toLowerCase()]||'application/octet-stream';
- const headers={'Content-Type':type,'Accept-Ranges':'bytes'};let start=0,end=size-1,status=200;
+ const size=fs.statSync(file).size,range=request.headers.get('range'),type={'.mp4':'video/mp4','.m4v':'video/mp4','.mov':'video/quicktime','.webm':'video/webm','.mkv':'video/x-matroska','.mp3':'audio/mpeg','.wav':'audio/wav','.m4a':'audio/mp4','.aac':'audio/aac','.ogg':'audio/ogg','.flac':'audio/flac','.wma':'audio/x-ms-wma'}[path.extname(file).toLowerCase()]||'application/octet-stream';
+ const headers={'Content-Type':type,'Accept-Ranges':'bytes','Access-Control-Allow-Origin':'*'};let start=0,end=size-1,status=200;
  if(range){const match=/^bytes=(\d*)-(\d*)$/.exec(range);if(!match||(!match[1]&&!match[2]))return new Response(null,{status:416,headers:{...headers,'Content-Range':'bytes */'+size}});
  if(!match[1])start=Math.max(0,size-Number(match[2]));else start=Number(match[1]);
  if(match[1]&&match[2])end=Math.min(end,Number(match[2]));
