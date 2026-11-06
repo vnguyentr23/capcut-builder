@@ -165,7 +165,7 @@ function lock(store,id,projectId){const b=get(store,id),p=b.projects.find(p=>p.i
 async function assignMusic(store,id,folders,progress=()=>{},projectId=null){
  const b=get(store,id),lib=require('./media.cjs'),pools={};
  for(const kind of ['hook','body']){if(!folders[kind])throw Error('Chọn thư mục nhạc '+kind);pools[kind]=(await lib.scan(folders[kind],'audio',store,progress)).filter(m=>!m.error&&m.duration>0);}
- for(const p of b.projects.filter(p=>!p.installed&&(projectId?p.id===projectId:(!p.locked||!p.assignments.length)))){
+ for(const p of b.projects.filter(p=>(projectId?p.id===projectId:(!p.installed&&(!p.locked||!p.assignments.length))))){
   const timing=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);const slots=p.blocks.map(block=>{const delay=block.hook?Math.min(timing.hookDelay*1e6,block.duration):0;return {block,duration:block.duration-delay,start:block.start+delay};}).filter(s=>s.duration>0);
   const candidates=new Map(slots.map(s=>[s.block.index,[...new Map(pools[s.block.hook?'hook':'body'].filter(m=>Math.round(m.duration*1e6)>=s.duration).map(m=>[m.fingerprint,m])).values()].map(m=>({m,rank:crypto.randomInt(2147483647)})).sort((a,b)=>a.rank-b.rank).map(x=>x.m)]));
   const owners=new Map(),chosen=new Map();
