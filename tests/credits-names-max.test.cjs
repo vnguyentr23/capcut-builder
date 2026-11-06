@@ -7,9 +7,8 @@ test('Credit rỗng lấy tên file; nguồn nhập tay ưu tiên; writer tạo 
   s.sources={m:'@Nguồn nhập tay'};assert.equal(store.hydrate(s).get('m').source,'@Nguồn nhập tay');s.sources.m='';assert.equal(store.hydrate(s).get('m').source,'');
  }finally{store.close();fs.rmSync(root,{recursive:true,force:true});}
 });
-test('Tên mặc định theo ngách và tăng số; tránh trùng ngoài app; lưu qua mở lại',()=>{
- const root=fs.mkdtempSync(path.join(os.tmpdir(),'ccb-name-')),store=new Store(path.join(root,'db'));try{const s=store.create('Động vật');assert.equal(s.draft.name,'Động vật_1');store.nameDraft(s,n=>n==='Động vật_2');assert.equal(s.draft.name,'Động vật_3');store.save(s);const restored=store.get(s.id);store.nameDraft(restored);assert.equal(restored.draft.name,'Động vật_4');assert.equal(store.create('Ngách khác').draft.name,'Ngách khác_1');}finally{store.close();fs.rmSync(root,{recursive:true,force:true});}
-});
+test('Tên theo kênh và ngách; số dựa vào dự án riêng biệt, không theo số lần lưu',()=>{const store=new Store(':memory:');try{const s=store.create('Động vật');assert.equal(s.draft.name,'Kênh gốc_Động vật_1');store.bodyMilestone(s);store.bodyMilestone(s);s.draft.id=d.uid();store.nameDraft(s);assert.equal(s.draft.name,'Kênh gốc_Động vật_2');store.nameDraft(s,n=>n==='Kênh gốc_Động vật_2');assert.equal(s.draft.name,'Kênh gốc_Động vật_3');store.save(s);s.draft.name='Sửa tên';store.save(s);assert.equal(store.get(s.id).draft.name,'Kênh gốc_Động vật_3');}finally{store.close();}});
+
 test('Thiếu footage vẫn tạo Body <=N, không lặp; không để lỗ slot/block; rỗng bị chặn',()=>{
  const draft=d.defaults();draft.target=10;draft.blockSize=2;draft.pattern=['A','B'];const groups=[{id:'A',items:[]},{id:'B',items:['b0','b1','b2']}],media=new Map(groups[1].items.map(id=>[id,{id,fingerprint:id,duration:5,width:1920,height:1080,path:id}]));
  draft.body=d.generate(draft,groups,media,new Set());assert.equal(draft.body.length,3);assert.deepEqual(draft.body.map(b=>b.slotIndex),[0,1,2]);assert.equal(d.musicSlots(draft,d.timeline(draft,media)).length,2);assert.throws(()=>d.generate(draft,groups,media,new Set(groups[1].items)),/Không còn/);

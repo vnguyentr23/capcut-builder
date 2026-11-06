@@ -44,23 +44,33 @@ class Store {
   canNewDraft(s){return !!this.db.prepare("SELECT 1 FROM projects WHERE niche_id=? AND status='CREATED' AND (json_extract(snapshot,'$.draft.id')=? OR json_extract(snapshot,'$.projectId')=?) LIMIT 1").get(s.id,s.draft.id,s.draft.id);}
   requireCreatedDraft(s){if(!this.canNewDraft(s))throw Error('Hãy tạo dự án CapCut thành công trước khi tạo dự án mới.');}
   nameDraft(s,exists=()=>false){
-    const base=fixName(s.channelName&&s.channelName!=='Kênh gốc'?s.channelName:s.name).slice(0,85),rows=this.db.prepare('SELECT name,snapshot FROM projects WHERE niche_id=?').all(s.id);
-    let number=Math.max(0,s.projectCounter||0);
-    for(const row of rows){const snap=JSON.parse(row.snapshot);number=Math.max(number,snap.draft?.projectNumber||0);if(row.name.startsWith(base+'_')){const n=Number(row.name.slice(base.length+1));if(Number.isSafeInteger(n))number=Math.max(number,n);}}
-    const names=new Set(rows.map(r=>r.name.toLocaleLowerCase()));let name;
-    do{name=base+'_'+(++number);}while(names.has(name.toLocaleLowerCase())||exists(name));
-    s.projectCounter=number;s.draft.projectNumber=number;s.draft.autoName=true;s.draft.name=name;return name;
+    const channel=this.db.prepare('SELECT name FROM channels WHERE id=?').get(s.id)?.name||s.channelName||'Kênh gốc';
+    const base=fixName(channel+'_'+s.name).slice(0,85),rows=this.db.prepare('SELECT name,snapshot FROM projects WHERE niche_id=?').all(s.id);
+    const keys=new Set();for(const row of rows){const snap=JSON.parse(row.snapshot),id=snap.draft?.id||snap.projectId;if(id===s.draft.id)continue;keys.add(id||row.name.trim().replace(/[_\s]+/g,' ').toLocaleLowerCase());}
+    let number=keys.size+1,name=base+'_'+number;const names=new Set(rows.filter(r=>{const snap=JSON.parse(r.snapshot);return (snap.draft?.id||snap.projectId)!==s.draft.id;}).map(r=>r.name.toLocaleLowerCase()));
+    while(names.has(name.toLocaleLowerCase())||exists(name))name=base+'_'+(++number);
+    s.projectCounter=number;s.draft.projectNumber=number;s.draft.autoName=true;s.draft.nameLocked=true;s.draft.name=name;return name;
+  }
+  draftSnapshot(s,revision){return {draft:structuredClone(s.draft),sources:s.sources||{},libraryState:s.groups.map(g=>({id:g.id,items:g.items,pinned:g.pinned,order:g.order,sort:g.sort})),...(revision===undefined?{}:{bodyRevision:revision})};}
+  saveWorking(s){
+    const id='working:'+s.id+':'+s.draft.id;
+    if(!this.db.prepare("SELECT 1 FROM projects WHERE niche_id=? AND json_extract(snapshot,'$.draft.id')=? LIMIT 1").get(s.id,s.draft.id))return;
+    this.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,created_at=excluded.created_at,snapshot=excluded.snapshot').run(id,s.id,s.draft.name,'WORKING','',new Date().toISOString(),JSON.stringify(this.draftSnapshot(s)));
+  }
+  bodyMilestone(s){
+    const row=this.db.prepare("SELECT MAX(CAST(json_extract(snapshot,'$.bodyRevision') AS INTEGER)) AS n FROM projects WHERE niche_id=? AND json_extract(snapshot,'$.draft.id')=? AND status='BODY_REVISION'").get(s.id,s.draft.id),revision=row.n===null?0:row.n+1;
+    this.db.exec('BEGIN IMMEDIATE');try{this.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(uid(),s.id,s.draft.name,'BODY_REVISION','',new Date().toISOString(),JSON.stringify(this.draftSnapshot(s,revision)));this.save(s);this.db.exec('COMMIT');}catch(e){this.db.exec('ROLLBACK');throw e;}
   }
   create(name){const state={id:uid(),name,parent:'',groups:[],draft:defaults()};this.nameDraft(state);this.save(state);return state;}
-  get(id){const row=this.db.prepare('SELECT state FROM niches WHERE id=?').get(id);if(!row)throw Error('Không tìm thấy ngách.');const s=JSON.parse(row.state);if(/^Dự án mới(?:[ (].*)?$/.test(s.draft.name)){this.nameDraft(s);this.save(s);}if(s.draft.musicVersion!==3||!s.draft.writerVersion||!(s.draft.presetVersion>=3)||!s.draft.blockVersion||!s.draft.shortClipFill||!s.draft.ducking){migratePresets(s.draft);this.save(s);}return require('./channels.cjs').decorate(this,s);}
-  save(s){migratePresets(s.draft);require('./channels.cjs').syncLibrary(this,s);this.db.prepare('INSERT INTO niches VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,state=excluded.state').run(s.id,s.name,JSON.stringify(s));}
+  get(id){const row=this.db.prepare('SELECT state FROM niches WHERE id=?').get(id);if(!row)throw Error('Không tìm thấy ngách.');const s=JSON.parse(row.state);if(!s.draft.nameLocked){if(!this.canNewDraft(s))this.nameDraft(s);s.draft.nameLocked=true;this.save(s);}if(/^Dự án mới(?:[ (].*)?$/.test(s.draft.name)){this.nameDraft(s);this.save(s);}if(s.draft.musicVersion!==3||!s.draft.writerVersion||!(s.draft.presetVersion>=3)||!s.draft.blockVersion||!s.draft.shortClipFill||!s.draft.ducking){migratePresets(s.draft);this.save(s);}return require('./channels.cjs').decorate(this,s);}
+  save(s){const previous=this.db.prepare('SELECT state FROM niches WHERE id=?').get(s.id);if(previous){const old=JSON.parse(previous.state);if(old.draft.id===s.draft.id&&old.draft.nameLocked){s.draft.name=old.draft.name;s.draft.projectNumber=old.draft.projectNumber;s.draft.nameLocked=true;}}migratePresets(s.draft);require('./channels.cjs').syncLibrary(this,s);this.db.prepare('INSERT INTO niches VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,state=excluded.state').run(s.id,s.name,JSON.stringify(s));this.saveWorking(s);}
   cached(file,size,mtime){const row=this.db.prepare('SELECT data FROM media WHERE path=? AND size=? AND mtime=? ORDER BY rowid DESC LIMIT 1').get(file,size,mtime);return row?JSON.parse(row.data):null;}
   putMedia(m){this.db.prepare('INSERT INTO media VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,mtime=excluded.mtime').run(m.id,m.path,m.size,m.mtime,m.fingerprint,JSON.stringify(m));}
   media(id){const r=this.db.prepare('SELECT data FROM media WHERE id=?').get(id);return r?JSON.parse(r.data):null;}
   hydrate(s){const result=new Map(),query=this.db.prepare('SELECT data FROM media WHERE id=?');for(const id of new Set([...s.groups.flatMap(g=>g.items),...s.draft.hook.map(h=>h.id),...s.draft.body.map(h=>h.id)])){const row=query.get(id),m=row?JSON.parse(row.data):null;if(m){const manual=Object.hasOwn(s.sources||{},id),fallback=!(m.source||'').trim();result.set(id,{...m,source:manual?s.sources[id]:fallback?require('node:path').win32.parse(m.path).name.replace(/(?:\s*\(\d+\))+\s*$/u,'').trimEnd():m.source,sourceOrigin:manual?'manual':fallback?'filename':'source'});}}return result;}
   used(niche){return new Set(this.db.prepare('SELECT DISTINCT fingerprint FROM usage WHERE niche_id=?').all(niche).map(r=>r.fingerprint));}
-  history(niche){return this.db.prepare('SELECT id,name,status,path,created_at FROM projects WHERE niche_id=? ORDER BY created_at DESC').all(niche);}
-  archiveDraft(s){this.reserve(s.id,s.draft.id,{draft:s.draft});if(s.draft.body.length||s.draft.hook.length)this.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(uid(),s.id,s.draft.name,'DRAFT','',new Date().toISOString(),JSON.stringify({draft:s.draft,sources:s.sources||{}}));}
+  history(niche){return this.db.prepare("SELECT id,name,status,path,created_at,json_extract(snapshot,'$.draft.id') AS draft_id,json_extract(snapshot,'$.bodyRevision') AS body_revision FROM projects WHERE niche_id=? ORDER BY created_at DESC").all(niche);}
+  archiveDraft(s){this.reserve(s.id,s.draft.id,{draft:s.draft});if(s.draft.body.length||s.draft.hook.length){const id='working:'+s.id+':'+s.draft.id;this.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,created_at=excluded.created_at,snapshot=excluded.snapshot').run(id,s.id,s.draft.name,'WORKING','',new Date().toISOString(),JSON.stringify(this.draftSnapshot(s)));}}
   record(s,file,m,adapterResult){
     const real=adapterResult?.compatible===true&&adapterResult?.verified===true;
     if(real&&adapterResult.kind!=='capcut')throw Error('Adapter không hợp lệ.');

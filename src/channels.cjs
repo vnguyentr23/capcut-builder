@@ -27,7 +27,7 @@ function create(store,id,name){
  s.draft={...s.draft,id:uid(),name:name+'_1',projectNumber:1,hook:[],body:[],end:null,assignments:{},excluded:[],pinOrder:[]};
  for(const g of s.groups)g.pinned=[];
  delete s.importSource;
- const nested=store.db.isTransaction;if(!nested)store.db.exec('BEGIN IMMEDIATE');try{store.db.prepare('INSERT INTO channels VALUES(?,?,?)').run(s.id,root,name);store.save(s);if(!nested)store.db.exec('COMMIT');}catch(e){if(!nested)store.db.exec('ROLLBACK');throw e;}return s;
+ const nested=store.db.isTransaction;if(!nested)store.db.exec('BEGIN IMMEDIATE');try{store.db.prepare('INSERT INTO channels VALUES(?,?,?)').run(s.id,root,name);store.nameDraft(s);store.save(s);if(!nested)store.db.exec('COMMIT');}catch(e){if(!nested)store.db.exec('ROLLBACK');throw e;}return s;
 }
 function remove(store,id){
  const c=store.db.prepare('SELECT * FROM channels WHERE id=?').get(id);if(!c)throw Error('Không tìm thấy kênh.');if(c.id===c.root_id)throw Error('Không được xóa Kênh gốc.');
