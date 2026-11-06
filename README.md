@@ -217,3 +217,8 @@ Bộ cũ được rà soát khi mở chỉnh sửa và trước khi tạo CapCut
 - Bấm **Áp dụng** để lưu. Khi phát footage trong cửa sổ chỉnh sửa hoặc trên card, sound effect phát/dừng và tua cùng video. Mute tiếng footage không tắt sound effect.
 - CapCut nhận track âm thanh gốc **Sound effects**, không render lại footage. Những sound effect không chồng thời gian nằm cùng track; phần chồng nhau được xếp thêm track để vẫn chỉnh sửa riêng. Phần vượt cuối footage được cắt khỏi timeline.
 - Trộn, thay cảnh từ bộ nguồn hoặc đổi chỗ giữ sound effect cùng footage. Gói chuyển máy chứa tham chiếu và hash file sound effect; máy nhận cần có các file âm thanh đó và chọn thư mục để liên kết lại.
+
+
+### Bộ nguồn độc lập với CapCut
+
+Lưu bộ nguồn đọc timeline trong database tool, không đọc thư mục dự án CapCut. Các lần tạo CapCut mới lưu lại timeline đầy đủ trong lịch sử. Với lịch sử cũ, tool tìm bộ nguồn đã lưu bằng ID dự án; nếu có manifest đầy đủ thì dựng timeline từ manifest. Timeline phục hồi được lưu vào lịch sử sau khi tất cả nguồn đã đọc thành công. Bản chỉ có danh sách footage đã dùng nhưng thiếu timeline cần nhập gói bộ nguồn từ máy cũ. Chỉnh sửa trực tiếp trong CapCut sau khi xuất không tự cập nhật vào tool. File footage, nhạc và sound effect vẫn cần tồn tại để xem và xuất.

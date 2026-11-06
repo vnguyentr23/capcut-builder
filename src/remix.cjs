@@ -69,10 +69,8 @@ function mix(sources,options,seed,known=[]){
  }
  throw Error('Chưa tìm được tổ hợp thỏa không trùng footage và giữ vị trí block. Thử chọn thêm nguồn hoặc tắt giới hạn footage nguy hiểm.');
 }
-async function capture(store,ids){
- const cached=new Map(store.db.prepare('SELECT path,fingerprint FROM media').all().map(r=>[norm(r.path),r.fingerprint]));
- return Promise.all(ids.map(async id=>{const row=store.db.prepare('SELECT * FROM projects WHERE id=?').get(id);if(!row)throw Error('Dự án nguồn không còn tồn tại.');let folder=row.path,file=path.join(folder,'draft_content.json');const tp=path.join(folder,'Timelines/project.json');if(fs.existsSync(tp)){const p=read(tp);file=path.join(folder,'Timelines',p.main_timeline_id,'draft_content.json');}if(!fs.existsSync(file))throw Error('Không tìm thấy timeline: '+row.name);const draft=read(file);for(const m of draft.materials.videos||[]){if(m.path&&!cached.has(norm(m.path))&&fs.existsSync(m.path))cached.set(norm(m.path),await require('./media.cjs').hash(m.path));}return {id:row.id,name:row.name,path:folder,draft,meta:read(path.join(folder,'draft_meta_info.json')),fingerprints:Object.fromEntries((draft.materials.videos||[]).filter(m=>m.path).map(m=>[norm(m.path),cached.get(norm(m.path))||null]))};}));
-}
+async function capture(store,ids){return require('./source-snapshot.cjs').capture(store,ids);}
+
 function allSignatures(store,root){return [...new Set(store.db.prepare('SELECT summary FROM remix_batches WHERE root_id=?').all(root).flatMap(r=>JSON.parse(r.summary).signatures||[]))];}
 function preferences(store,id){try{return JSON.parse(store.pref('remix-settings:'+id)||'{}');}catch{return {};}}
 function sourcesFromBatch(b){if(!b.projects.length)return structuredClone(b.sources);const fingerprints=Object.assign({},...b.sources.map(s=>s.fingerprints||{}));return b.projects.map(p=>({id:p.id,name:p.name,path:p.installed||'',draft:structuredClone(p.draft),meta:{},fingerprints:{...fingerprints,...Object.fromEntries(p.blocks.flatMap(b=>b.clips).map(c=>[norm(c.path),c.fingerprint]))}}));}
@@ -225,7 +223,7 @@ async function install(store,id,adapter,progress=()=>{},projectId=null){
   const manifest={name:p.name,remixBatchId:b.id,draft:{...defaults(),name:p.name},clips:p.blocks.flatMap(bl=>bl.clips.map(c=>({...c,role:bl.hook?'hook':'body'})))};
   const result=await writer.install(manifest,detected.destination,[],writer.isRunning,draft);
   p.installed=result.path;p.locked=true;
-  store.db.exec('BEGIN IMMEDIATE');try{const projectId=uid();store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(projectId,b.channelId,p.name,'REMIX_CREATED',result.path,new Date().toISOString(),JSON.stringify(manifest));store.reserve(b.channelId,manifest.draft.id,manifest);for(const c of manifest.clips)store.db.prepare('INSERT OR IGNORE INTO usage VALUES(?,?,?,?)').run(b.channelId,c.fingerprint,projectId,c.role);save(store,b);store.db.exec('COMMIT');}catch(err){store.db.exec('ROLLBACK');throw Error('CapCut đã tạo '+p.name+' nhưng lưu lịch sử thất bại: '+err.message);}
+  store.db.exec('BEGIN IMMEDIATE');try{const projectId=uid();store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(projectId,b.channelId,p.name,'REMIX_CREATED',result.path,new Date().toISOString(),JSON.stringify({...manifest,timelineSnapshot:result.timelineSnapshot||draft}));store.reserve(b.channelId,manifest.draft.id,manifest);for(const c of manifest.clips)store.db.prepare('INSERT OR IGNORE INTO usage VALUES(?,?,?,?)').run(b.channelId,c.fingerprint,projectId,c.role);save(store,b);store.db.exec('COMMIT');}catch(err){store.db.exec('ROLLBACK');throw Error('CapCut đã tạo '+p.name+' nhưng lưu lịch sử thất bại: '+err.message);}
   progress({done:index+1,total:b.projects.length,file:p.name});
  }
  return b;

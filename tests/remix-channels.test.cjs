@@ -60,7 +60,7 @@ test('Append sources remixes only pending projects, retains exported projects an
   remix.save(store,batch);
   const installed=structuredClone(batch.projects[0]),source=fixture(dir,4),folder=path.join(dir,'new-source');
   fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'draft_content.json'),JSON.stringify(source.draft));fs.writeFileSync(path.join(folder,'draft_meta_info.json'),'{}');
-  store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(source.id,state.id,source.name,'CREATED',folder,'now','{}');
+  store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(source.id,state.id,source.name,'CREATED',folder,'now',JSON.stringify({timelineSnapshot:source.draft}));
   const result=await remix.appendSources(store,{id:batch.id,stateId:channel.id,sourceIds:[source.id]});
   assert.equal(result.projects.length,4);assert.deepEqual(result.projects[0],installed);
   assert.equal(result.projects[1].id,batch.projects[1].id);assert.equal(result.projects[1].name,batch.projects[1].name);
@@ -87,7 +87,7 @@ test('Source collections grow once and each channel consumes saved additions ind
   const first=await remix.create(store,{stateId:a.id,channelId:a.id,sourceBatchId:source.id,name:'First'});
   const second=await remix.create(store,{stateId:b.id,channelId:b.id,sourceBatchId:source.id,name:'Second'});
   const incoming=fixture(dir,3),folder=path.join(dir,'capcut');fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'draft_content.json'),JSON.stringify(incoming.draft));fs.writeFileSync(path.join(folder,'draft_meta_info.json'),'{}');
-  store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(incoming.id,root.id,'New','CREATED',folder,'now','{}');
+  store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(incoming.id,root.id,'New','CREATED',folder,'now',JSON.stringify({timelineSnapshot:incoming.draft}));
   await remix.addToSource(store,{id:source.id,stateId:a.id,sourceIds:[incoming.id]});
   assert.equal(remix.sourceUpdate(store,first).newSources.length,1);assert.equal(remix.sourceUpdate(store,second).newSources.length,1);
   fs.rmSync(folder,{recursive:true,force:true});

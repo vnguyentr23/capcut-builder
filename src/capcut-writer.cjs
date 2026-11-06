@@ -114,7 +114,7 @@ async function install(manifest,root,catalog=[],running=isRunning,preparedDraft=
     const backup=path.join(root,'root_meta_info.json.ccb-backup-'+Date.now()+'-'+projectId.slice(0,8)+'.json');fs.writeFileSync(backup,original,{flag:'wx'});
     index.all_draft_store.unshift(meta);index.draft_ids=Array.isArray(index.draft_ids)?index.all_draft_store.map(p=>p.draft_id):(Number(index.draft_ids)||0)+1;
     write(path.join(stage,'index.json'),index);fs.renameSync(projectStage,folder);moved=true;fs.renameSync(path.join(stage,'index.json'),indexPath);committed=true;
-    return {kind:'capcut',compatible:true,verified:true,verification:'schema-and-readback',path:folder,backup,projectId};
+    return {kind:'capcut',compatible:true,verified:true,verification:'schema-and-readback',path:folder,backup,projectId,timelineSnapshot:clone(d)};
   }finally{
     if(moved&&!committed)fs.renameSync(folder,path.join(stage,'project'));
     // This is a freshly created, fixed-prefix child of root, never user media.

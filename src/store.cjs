@@ -76,7 +76,7 @@ class Store {
     if(real&&adapterResult.kind!=='capcut')throw Error('Adapter không hợp lệ.');
     const id=uid();this.db.exec('BEGIN IMMEDIATE');
     try {
-      this.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(id,s.id,s.draft.name,real?'CREATED':'MANIFEST',file,new Date().toISOString(),JSON.stringify(m));
+      this.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(id,s.id,s.draft.name,real?'CREATED':'MANIFEST',file,new Date().toISOString(),JSON.stringify({...m,...(real&&adapterResult.timelineSnapshot?{timelineSnapshot:adapterResult.timelineSnapshot}:{})}));
       this.reserve(s.id,s.draft.id,m);
       if(real) for(const c of m.clips.filter(c=>['hook','body'].includes(c.role))) this.db.prepare('INSERT OR IGNORE INTO usage VALUES(?,?,?,?)').run(s.id,c.fingerprint,id,c.role);
       this.db.exec('COMMIT');
