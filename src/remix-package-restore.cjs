@@ -6,9 +6,16 @@ const transfer=require('./remix-transfer.cjs');
 const eligible=p=>!p.locked&&(!p.installed||p.mixUnlocked);
 const lineage=b=>[b.id,b.originPackageId].filter(Boolean);
 const norm=file=>path.resolve(file).replaceAll('\\','/').toLowerCase();
-function matchesFor(p,projects){
+function matchesFor(p,projects,context={}){
+ const imported=(p.importOrigins||[]).filter(o=>context.digest&&o.digest===context.digest);
+ if(imported.length)return projects.filter(q=>imported.some(o=>o.projectId===q.id));
  const byId=projects.filter(q=>lineage(p).some(key=>lineage(q).includes(key)));
  if(byId.length)return byId;
+ // Legacy imports changed project IDs, but retained native draft IDs even through editing/balancing.
+ if(context.samePackage&&p.draft?.id){
+  const byDraft=projects.filter(q=>q.draft?.id===p.draft.id);
+  if(byDraft.length)return byDraft;
+ }
  const byName=projects.filter(q=>p.name&&p.sourceName&&q.name===p.name&&q.sourceName===p.sourceName);
  if(byName.length)return byName;
  const bySourceId=projects.filter(q=>p.sourceId&&q.sourceId===p.sourceId);
@@ -19,12 +26,13 @@ function matchesFor(p,projects){
 function preview(store,id,pkg,mappings){
  const batch=remix.get(store,id),old=pkg.body.batch;
  if(!old.projects.length)throw Error('Đây là bộ nguồn. Hãy chọn gói của bộ nhân bản trước khi cân bằng.');
+ const context={digest:pkg.digest,samePackage:!!pkg.digest&&store.pref('remix-package:'+pkg.digest)===batch.id||lineage(batch).some(key=>lineage(old).includes(key))};
  const proposed=new Map(),rows=[];
  for(const p of batch.projects.filter(eligible)){
   const row={name:p.name,before:p.draft.duration/1e6};rows.push(row);
-  const matches=matchesFor(p,old.projects);
+  const matches=matchesFor(p,old.projects,context);
   if(matches.length!==1){row.reason=matches.length?'Có nhiều video cùng nguồn trong gói; chưa thể chọn tự động':'Không tìm thấy video cùng ID hoặc cùng nguồn trong gói';continue;}
-  if(batch.projects.filter(other=>matchesFor(other,old.projects).includes(matches[0])).length!==1){row.reason='Một video trong gói khớp với nhiều dự án hiện tại';continue;}
+  if(batch.projects.filter(other=>matchesFor(other,old.projects,context).includes(matches[0])).length!==1){row.reason='Một video trong gói khớp với nhiều dự án hiện tại';continue;}
   row.sourceName=matches[0].name;
   const q=matches[0],required=[
    ...q.draft.materials.videos,...require('./sound-effects.cjs').resources(q.draft),...(q.assignments||[]),q.settings?.intro||old.renderSettings?.intro||old.settings?.intro
@@ -32,7 +40,7 @@ function preview(store,id,pkg,mappings){
   const absent=required.find(m=>!mappings[norm(m.path)]||!fs.existsSync(mappings[norm(m.path)]));
   if(absent){row.reason='Thiếu file đã đối chiếu: '+path.basename(absent.path);continue;}
   const restored=transfer.rewrite(q,mappings);
-  Object.assign(restored,{id:p.id,name:p.name,installed:p.installed,locked:p.locked,mixUnlocked:p.mixUnlocked,originPackageId:p.originPackageId,editUndo:[]});
+  Object.assign(restored,{id:p.id,name:p.name,installed:p.installed,locked:p.locked,mixUnlocked:p.mixUnlocked,originPackageId:p.originPackageId,importOrigins:[...(p.importOrigins||[]),...(pkg.digest?[{digest:pkg.digest,projectId:q.id}]:[])],editUndo:[]});
   restored.draft.name=p.name;
   restored.settings=transfer.rewrite(require('./remix-settings.cjs').effective(q,old.renderSettings||old.settings),mappings);
   if(restored.editor)restored.editor.revision=(p.editor?.revision||0)+1;

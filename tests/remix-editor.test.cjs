@@ -131,3 +131,33 @@ test('Package recovery matching refuses name-only guesses and retains ambiguous 
  assert.deepEqual(matchesFor({...p,name:'renamed',sourceId:'source-1',sourceName:'renamed source'},[{...q,sourceId:'source-1'}]),[{...q,sourceId:'source-1'}]);
  assert.equal(matchesFor({...p,name:'renamed'},[q,{...q,id:'duplicate',name:'other'}]).length,2);
 });
+
+for(const legacy of [false,true])test('Original imported package restores renamed edited projects without source metadata; legacy='+legacy,async()=>{
+ const source=new Store(':memory:'),target=new Store(':memory:');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ccb-restore-import-'));
+ try{
+  const state=source.create('PHOTO'),old=fixture();
+  for(const m of old.draft.materials.videos)m.path=__filename;
+  const batch={id:uid(),name:'Original',rootId:state.id,channelId:state.id,settings:defaults(),sources:[],projects:[old]};remix.save(source,batch);
+  const transfer=require('../src/remix-transfer.cjs'),restore=require('../src/remix-package-restore.cjs'),file=path.join(dir,'old.ccb-remix');
+  await transfer.exportPackage(source,batch.id,file);const pkg=transfer.readPackage(file);
+  const mappings={[__filename.replaceAll('\\','/').toLowerCase()]:__filename};
+  const imported=(await transfer.importPackage(target,pkg,{mappings,missing:[]})).batch;
+  const p=imported.projects[0];assert.equal(p.importOrigins.at(-1).projectId,old.id);
+  p.name='abac-k1-photo_28';p.sourceName='changed';p.sourceId='changed';p.installed='created-capcut';p.mixUnlocked=true;p.locked=false;
+  if(legacy){delete p.importOrigins;delete p.originPackageId;delete imported.originPackageId;}
+  const e=edit.init(p);e.blocks[1].units[0]=require('../src/remix-allocation.cjs').empty('Missing');edit.rebuild(p);remix.save(target,imported);
+  assert(p.draft.duration<old.draft.duration);
+  const plan=restore.preview(target,imported.id,pkg,mappings);assert.equal(plan.proposed.size,1);
+  restore.apply(target,plan);const saved=remix.get(target,imported.id).projects[0];
+  assert.equal(saved.name,p.name);assert.equal(saved.installed,p.installed);assert.deepEqual(saved.draft.tracks,old.draft.tracks);
+  assert.equal(saved.importOrigins.at(-1).projectId,old.id);
+ }finally{source.close();target.close();fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('Legacy draft identity requires verified package and rejects ambiguous timelines',()=>{
+ const {matchesFor}=require('../src/remix-package-restore.cjs'),p={id:'new',draft:{id:'native'}},q={id:'old',draft:{id:'native'}};
+ assert.deepEqual(matchesFor(p,[q]),[]);
+ assert.deepEqual(matchesFor(p,[q],{samePackage:true}),[q]);
+ assert.equal(matchesFor(p,[q,{...q,id:'another'}],{samePackage:true}).length,2);
+});
