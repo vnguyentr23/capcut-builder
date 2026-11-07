@@ -69,12 +69,15 @@ test('Allocation preserves footage shared by installed and pending drafts',()=>{
  assert.equal(allocation.reconcile(store,batch),0);assert.equal(JSON.stringify(batch),snapshot);assert.equal(JSON.stringify(fixed),original);
  }finally{store.close();}
 });
-test('Allocation fills only free same-slot footage, never borrows from another pending Body',()=>{
- const store=new Store(':memory:');try{const state=store.create('Allocation'),a=fixture(),b=fixture(),source=fixture();
- const originalB=structuredClone(edit.init(b).blocks[1].units[0]);const first=edit.init(a).blocks[1].units[0];require('../src/blacklist.cjs').merge(store,[{type:'footage',value:first.fingerprint}]);
- const sourceUnit=edit.init(source).blocks[1].units[0],fresh='f'.repeat(64),sources=[{draft:source.draft,blocks:[{units:[]},{units:[{...sourceUnit,fingerprint:fresh,identity:fresh,segments:source.draft.tracks[0].segments.filter(s=>source.ledger.find(r=>r.block===2&&r.slot===1).segmentIds.includes(s.id))}]}]}];
- const batch={channelId:state.id,projects:[a,b]};require('../src/remix-allocation.cjs').reconcile(store,batch,sources);
- const hashes=batch.projects.flatMap(p=>require('../src/remix-allocation.cjs').bodyHashes(p));assert.equal(hashes.filter(h=>h===fresh).length,1);assert.equal(hashes.length,7);assert.deepEqual(b.editor.blocks[1].units[0].removedFootage.segments,originalB.segments);assert(!hashes.includes(first.fingerprint));assert(b.editor.blocks.slice(1).some(b=>b.units.some(u=>u.empty)));
+test('Copyright repair only empties blocked units in the requested project',()=>{
+ const store=new Store(':memory:');try{
+  const state=store.create('Allocation'),a=fixture(),b=fixture(),before=structuredClone(b);
+  const unit=structuredClone(edit.init(a).blocks[1].units[0]);
+  require('../src/blacklist.cjs').merge(store,[{type:'footage',value:unit.fingerprint}]);
+  const allocation=require('../src/remix-allocation.cjs'),batch={channelId:state.id,projects:[a,b]};
+  assert.equal(allocation.reconcile(store,batch,new Set([a.id])),1);
+  assert.deepEqual(a.editor.blocks[1].units[0].removedFootage,unit);
+  assert(a.editor.blocks[1].units[0].empty);assert.deepEqual(b,before);
  }finally{store.close();}
 });
 test('Empty slots support swap, fill, persisted reopening and export without blank timeline segments',async()=>{

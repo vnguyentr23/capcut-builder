@@ -91,7 +91,7 @@ async function mutate(store,args){
   (p.editUndo??=[]).push({editor:clone(e),name:p.name,assignments:clone(p.assignments),settings:clone(p.settings)});p.editUndo=p.editUndo.slice(-5);
   if(op==='settings'){p.settings=require('./remix-settings.cjs').validate(clone(args.settings));if(p.settings.reblockEnabled)reblock(p,p.settings.blockSize);}
   else if(op==='repairCopyright'){
-   const sources=await remix.analyzeSources(b.sources);require('./remix-allocation.cjs').reconcile(store,b,sources);
+   require('./remix-allocation.cjs').reconcile(store,b,new Set([p.id]));
   }
   else if(op==='moveBlock'||op==='removeBlock'){
 
@@ -147,6 +147,6 @@ function copyForExport(store,id,projectId,existingNames=[]){
  for(const row of store.db.prepare('SELECT summary FROM remix_batches').all())for(const n of JSON.parse(row.summary).names||[])names.add(n.toLocaleLowerCase());
  for(const row of store.db.prepare('SELECT name FROM projects').all())names.add(row.name.toLocaleLowerCase());
  const base=source.name.replace(/_v\d+$/i,'').slice(0,85);let version=2,name;do{name=base+'_v'+version++;}while(names.has(name.toLocaleLowerCase()));
- const p=clone(source);p.id=uid();p.name=name;p.draft.name=name;p.draft.id=uid();p.installed=null;p.locked=true;p.editUndo=[];p.copiedFrom=source.id;p.editedAt=new Date().toISOString();init(p);p.editor.revision=0;p.settings=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);b.projects.push(p);require('./remix-allocation.cjs').reconcile(store,b);remix.save(store,b);return present(p);
+ const p=clone(source);p.id=uid();p.name=name;p.draft.name=name;p.draft.id=uid();p.installed=null;p.locked=true;p.editUndo=[];p.copiedFrom=source.id;p.editedAt=new Date().toISOString();init(p);p.editor.revision=0;p.settings=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);b.projects.push(p);remix.save(store,b);return present(p);
 }
 module.exports={reblock,copyForExport,open,load,present,summary,pack,init,rebuild,setParts,mutate,candidates,locate};

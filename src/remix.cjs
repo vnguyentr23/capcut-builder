@@ -109,7 +109,7 @@ async function generate(store,batch,prefix,onlyId=null,incomingOnly=false){
   regenerated.add(batch.projects[i].id);
  }
  if(incomingOnly)return batch;
- require('./remix-allocation.cjs').reconcile(store,batch,sources,regenerated);for(const p of batch.projects){if(!regenerated.has(p.id)||p.installed)continue;const setting=p.settings||batch.renderSettings;if(setting?.reblockEnabled)require('./remix-editor.cjs').reblock(p,setting.blockSize);}if(!onlyId&&(batch.balanceOptions?.enabled??batch.options.durationBalance??true)){batch.balanceReport=await require('./remix-balance.cjs').balance(batch,batch.balanceOptions||{target:batch.options.durationTarget??30,keepPosition:batch.options.keepPosition??true,mixHook:false},sources);}return batch;
+ require('./remix-allocation.cjs').reconcile(store,batch,regenerated);for(const p of batch.projects){if(!regenerated.has(p.id)||p.installed)continue;const setting=p.settings||batch.renderSettings;if(setting?.reblockEnabled)require('./remix-editor.cjs').reblock(p,setting.blockSize);}if(!onlyId&&(batch.balanceOptions?.enabled??batch.options.durationBalance??true)){batch.balanceReport=await require('./remix-balance.cjs').balance(batch,batch.balanceOptions||{target:batch.options.durationTarget??30,keepPosition:batch.options.keepPosition??true,mixHook:false},sources);}return batch;
 }
 async function appendSources(store,{id,stateId,sourceIds},savedSources=null,parentSourceId=null){
  const batch=get(store,id);
@@ -131,16 +131,9 @@ async function appendSources(store,{id,stateId,sourceIds},savedSources=null,pare
  batch.projects.push(...added.projects);
  batch.sources.push(...incoming);
  const sources=await analyzeSources(batch.sources,batch.options);
- const allocation=require('./remix-allocation.cjs'),edit=require('./remix-editor.cjs');
- const previousBody=batch.projects.filter(p=>!fresh.has(p.id)).flatMap(allocation.bodyHashes);
- allocation.reconcile(store,batch,sources,fresh);
+ const edit=require('./remix-editor.cjs');
  for(const p of added.projects){const setting=p.settings||batch.renderSettings;if(setting?.reblockEnabled)edit.reblock(p,setting.blockSize);}
  mixAddedUnits(batch,fresh,sources);
- if(batch.balanceOptions?.enabled??batch.options?.durationBalance??true){
-  await require('./remix-balance.cjs').balance(batch,batch.balanceOptions||{target:batch.options?.durationTarget??30,keepPosition:batch.options?.keepPosition??true},sources);
- }
- const bodyAfter=new Set(batch.projects.flatMap(allocation.bodyHashes));
- if(previousBody.some(hash=>hash&&!bodyAfter.has(hash)))throw Error('Cập nhật sẽ làm mất footage Body đang có. Bộ cũ được giữ nguyên.');
  batch.inputSourceIds=[...new Set([...previousIds,...addedIds])];
  if(parentSourceId)batch.sourceBatchId=parentSourceId;
  if(get(store,id).updated!==version)throw Error('Bộ đã thay đổi. Hãy mở lại trước khi cập nhật.');
