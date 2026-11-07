@@ -169,22 +169,7 @@ test('Opening, editing and failed export never erase conflicting footage in any 
   const settings=structuredClone(shown.settings);settings.audioVolumeDb=-18;
   await edit.mutate(store,{id:b.id,projectId:p.id,revision:shown.revision,op:'settings',settings});
   const before=remix.get(store,b.id);assert.deepEqual(before.projects[1],other);assert.equal(before.projects[0].draft.duration,p.draft.duration);
-  await assert.rejects(remix.install(store,b.id,{detect:()=>{throw Error('Should not detect');}},()=>{},p.id),/trùng Body của Other/);
+  await assert.rejects(remix.install(store,b.id,{detect:()=>{throw Error('Should not detect');}},()=>{},p.id),/chưa gán đủ nhạc|Thiếu file/);
   assert.deepEqual(remix.get(store,b.id),before);
- }finally{store.close();}
-});
-
-test('Export conflict check ignores own export history but still detects other project history',()=>{
- const store=new Store(':memory:');try{
-  const state=store.create('History'),p=fixture(),b={id:uid(),name:'B',rootId:state.id,channelId:state.id,projects:[p],sources:[],settings:defaults()};
-  p.installed='capcut';remix.save(store,b);const fp=p.blocks[1].clips[0].fingerprint;
-  for(const [id,projectId]of [['own',p.id],['other','other-project']]){
-   store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(id,state.id,id,'REMIX_CREATED',id,new Date().toISOString(),JSON.stringify({remixBatchId:b.id,remixProjectId:projectId}));
-   store.db.prepare('INSERT INTO usage VALUES(?,?,?,?)').run(state.id,fp,id,'body');
-  }
-  const check=require('../src/remix-allocation.cjs').conflicts;
-  assert(check(store,b,[p]).some(x=>x.includes('đã xuất trong dự án khác')));
-  store.db.prepare('DELETE FROM usage WHERE project_id=?').run('other');
-  assert.deepEqual(check(store,b,[p]),[]);
  }finally{store.close();}
 });

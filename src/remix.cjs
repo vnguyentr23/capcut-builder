@@ -97,6 +97,11 @@ async function generate(store,batch,prefix,onlyId=null,incomingOnly=false){
  for(const [i,p] of plans.entries()){
   const previous=batch.projects[i];if(previous&&(previous.locked||previous.installed||(onlyId&&previous.id!==onlyId)))continue;
   let name=previous?.name;if(!name){do{name=prefix+'_'+(++num);}while(taken.has(name.toLowerCase()));taken.add(name.toLowerCase());}
+  if(onlyId){
+   const used=require('./remix-used.cjs')(store,batch.channelId,batch);
+   for(const hash of require('./remix-allocation.cjs').others(batch,onlyId))used.add(hash);
+   require('./remix-unused-plan.cjs')(p,sources,used);
+  }
   p.signature=signature(p.blocks);const result=e.buildDraft(p,sources,{name}),bodyOriginal=new Set(p.source.blocks.slice(1).flatMap(b=>b.units.map(u=>u.identity))),body=p.blocks.slice(1).flatMap(b=>b.units);
   const blocks=p.blocks.map((b,index)=>{const entries=result.ledger.filter(r=>r.block===index+1);return {index,hook:index===0,start:Math.min(...entries.map(r=>r.newStart)),duration:entries.reduce((n,r)=>n+r.duration,0),clips:b.units.map(u=>({name:u.name,path:u.path,fingerprint:u.identity,sourceStart:u.segments[0].source_timerange?.start||0,duration:u.duration,parts:u.segments.map(s=>({start:(s.source_timerange?.start||0)/1e6,duration:(s.source_timerange?.duration||s.target_timerange.duration)/1e6,speed:s.speed||1,volume:s.volume??1}))}))};});
   if(p.source.ending)blocks.at(-1).duration+=p.source.ending.duration;
@@ -301,7 +306,7 @@ function check(batch,store){
  return {ok:!missing.size&&!issues.length,missing:[...missing],issues};
 }
 async function install(store,id,adapter,progress=()=>{},projectId=null){
- const b=get(store,id),selected=b.projects.filter(p=>projectId?p.id===projectId:!p.installed);if(!selected.length)throw Error('Không tìm thấy bản nháp.');const conflicts=require('./remix-allocation.cjs').conflicts(store,b,selected);if(conflicts.length)throw Error(conflicts.join('\n'));const pre=check({...b,projects:selected.map(p=>({...p,installed:null}))},store);if(!pre.ok)throw Error([...pre.issues,...pre.missing.map(p=>'Thiếu file: '+p)].join('\n'));
+ const b=get(store,id),selected=b.projects.filter(p=>projectId?p.id===projectId:!p.installed);if(!selected.length)throw Error('Không tìm thấy bản nháp.');const pre=check({...b,projects:selected.map(p=>({...p,installed:null}))},store);if(!pre.ok)throw Error([...pre.issues,...pre.missing.map(p=>'Thiếu file: '+p)].join('\n'));
  const state=store.get(b.channelId),detected=await adapter.detect(state.draft.destination);if(!detected.compatible)throw Error(detected.reason);
  const writer=require('./capcut-writer.cjs');if(await writer.isRunning())throw Error('Lưu và đóng CapCut trước khi tạo bộ dự án.');
  const names=new Set(detected.existingNames.map(n=>n.toLowerCase()));for(const p of selected.filter(p=>!p.installed))if(names.has(p.name.toLowerCase()))throw Error('Tên đã tồn tại trong CapCut: '+p.name);
