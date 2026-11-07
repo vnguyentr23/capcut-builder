@@ -18,36 +18,6 @@ updateSourceButton.onclick=()=>run('Cập nhật bộ nhân bản…',async()=>{
 });
 const repairSourceButton=document.createElement('button');repairSourceButton.textContent='Khôi phục ô trống từ nguồn';updateSourceButton.after(repairSourceButton);
 repairSourceButton.onclick=()=>run('Tìm footage cho ô trống…',async()=>{const id=remixBatch.id;const result=await api('remixFillSourceGaps',id);remixBatch=await api('remixGet',id);renderRemix();toast('Đã bổ sung '+result.restored+' footage. Còn '+result.remaining+' ô trống trong bản nháp đang mở khóa.');});
-const historyRecoveryButton=document.createElement('button');
-historyRecoveryButton.textContent='Khôi phục từ lịch sử xuất CapCut';
-repairSourceButton.after(historyRecoveryButton);
-const recoveryDialog=document.createElement('dialog');
-recoveryDialog.style.cssText='width:min(800px,92vw);max-height:85vh;overflow:auto';
-recoveryDialog.innerHTML='<h2>Khôi phục từ lịch sử xuất CapCut</h2><div data-projects></div><pre data-slots style="white-space:pre-wrap"></pre><div class="row"><button data-close>Đóng</button><button class="primary" data-save>Khôi phục các ô khớp</button></div>';
-document.body.append(recoveryDialog);
-let recoveryState,recoveryBatch,recoveryChoices;
-async function previewHistoryRecovery(){
- const result=await api('remixHistoryRecovery',{id:recoveryBatch,choices:recoveryChoices});
- recoveryState=result;
- const host=recoveryDialog.querySelector('[data-projects]');
- host.replaceChildren();
- for(const p of result.projects){
-  const label=document.createElement('label'),select=document.createElement('select');label.textContent=p.name;
-  for(const h of p.history)select.add(new Option(h.path+' · '+new Date(h.created_at).toLocaleString('vi-VN'),h.id));
-  if(!p.history.length)select.add(new Option('Chưa có lịch sử xuất trên máy này',''));
-  select.value=p.selected||'';select.disabled=!p.history.length;
-  select.onchange=()=>run('Đọc lần xuất…',async()=>{recoveryChoices[p.id]=select.value;await previewHistoryRecovery();});
-  label.append(select);host.append(label);
- }
- recoveryDialog.querySelector('[data-slots]').textContent=result.rows.map(r=>r.project+' · '+(r.block?'Body '+r.block:'Hook')+' · Ô '+r.slot+' — '+(r.clip?r.clip+' · '+r.cuts.map(([a,b])=>a.toFixed(3)+'–'+b.toFixed(3)+' s').join(', '):r.reason)).join('\n')||'Không có ô trống trong các dự án đang mở khóa.';
- recoveryDialog.querySelector('[data-save]').disabled=!result.rows.some(r=>r.clip);
-}
-historyRecoveryButton.onclick=()=>run('Đọc lịch sử xuất…',async()=>{recoveryBatch=remixBatch.id;recoveryChoices={};await previewHistoryRecovery();recoveryDialog.showModal();});
-recoveryDialog.querySelector('[data-close]').onclick=()=>recoveryDialog.close();
-recoveryDialog.querySelector('[data-save]').onclick=()=>run('Khôi phục footage…',async()=>{
- const result=await api('remixHistoryRecovery',{id:recoveryBatch,choices:Object.fromEntries(recoveryState.projects.map(p=>[p.id,p.selected||''])),updated:recoveryState.updated,apply:true});
- recoveryDialog.close();remixBatch=await api('remixGet',recoveryBatch);renderRemix();toast('Đã khôi phục '+result.rows.filter(r=>r.clip).length+' footage từ lịch sử xuất.');
-});
 window.refreshRemixContext=()=>loadRemix();
 window.renderChannels=()=>{const list=window.remixChannels||[];$('#channel').innerHTML=list.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');$('#channel').value=state.id;$('#deleteChannel').disabled=state.id===(state.rootNicheId||state.id);};
 $('#channel').onchange=e=>run('Chuyển kênh…',async()=>{accept(await api('channelSwitch',e.target.value));if(!$('#remixPanel').hidden)await loadRemix();});
@@ -102,7 +72,7 @@ $('#remixFromBatch').onclick=async()=>{
 function renderRemix(){
  $('#remixBatches').querySelectorAll('[data-batch]').forEach(button=>{const active=button.dataset.batch===remixBatch?.id;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));});
 
- const b=remixBatch;historyRecoveryButton.hidden=repairSourceButton.hidden=!b?.projects.length;balanceButton.disabled=!b?.projects.filter(p=>!p.locked&&(!p.installed||p.mixUnlocked)).length;appendSourcesButton.hidden=!b||!!b.projects.length;updateSourceButton.hidden=!b?.projects.length;updateSourceButton.disabled=!b?.sourceUpdate?.count;updateSourceButton.textContent=b?.sourceUpdate?.count?'Cập nhật từ bộ nguồn · '+b.sourceUpdate.count+' video mới':'Chưa có video nguồn mới';deleteBatchButton.disabled=!b;batchSettingsButton.disabled=!b?.projects.some(p=>!p.installed);$('#remixResult').hidden=!b;$('#remixFromBatch').hidden=!b||!!b.projects.length;$('#remixFromBatch').disabled=!b||!!b.projects.length||!b.sources?.length;
+ const b=remixBatch;repairSourceButton.hidden=!b?.projects.length;balanceButton.disabled=!b?.projects.filter(p=>!p.locked&&(!p.installed||p.mixUnlocked)).length;appendSourcesButton.hidden=!b||!!b.projects.length;updateSourceButton.hidden=!b?.projects.length;updateSourceButton.disabled=!b?.sourceUpdate?.count;updateSourceButton.textContent=b?.sourceUpdate?.count?'Cập nhật từ bộ nguồn · '+b.sourceUpdate.count+' video mới':'Chưa có video nguồn mới';deleteBatchButton.disabled=!b;batchSettingsButton.disabled=!b?.projects.some(p=>!p.installed);$('#remixResult').hidden=!b;$('#remixFromBatch').hidden=!b||!!b.projects.length;$('#remixFromBatch').disabled=!b||!!b.projects.length||!b.sources?.length;
  if(!b){$('#remixRows').innerHTML='';$('#remixChecks').textContent='';return;}$('#remixSourceSummary').hidden=!!b.projects.length;$('#remixSourceSummary').textContent=b.sources.length+' dự án nguồn đã lưu. Bấm Nhân bản cho kênh này để tạo cho kênh trên header, hoặc xuất gói chuyển máy.';for(const id of ['remixInstall','remixCheck','remixAssignMusic'])$('#'+id).disabled=!b.projects.length;
  $('#remixRelink').hidden=!b.assetManifest;$('#remixBatchTitle').textContent=b.name;$('#remixHookFolder').textContent=b.musicFolders?.hook||'Chọn thư mục nhạc Hook';$('#remixBodyFolder').textContent=b.musicFolders?.body||'Chọn thư mục nhạc Body';
  $('#remixRows').innerHTML=b.projects.map(p=>`<tr><td><strong>${esc(p.name)}</strong><small>${esc(p.sourceName)}</small></td><td>${p.blocks[0]?.clips.length||0} Hook + ${p.blocks.slice(1).reduce((n,b)=>n+b.clips.length,0)} Body<br><small>${p.blocks.length} block</small></td><td>${fmt(p.draft.duration/1e6)}</td><td>${p.reusedPercent===null?'Chưa xác định':p.reusedPercent+'%'}<small>${p.reusedCount===null?'Không xác định được nguồn':p.reusedCount+' / '+p.bodyCount+' clip Body thuộc video nguồn'}</small></td><td>${p.installed?'Đã tạo CapCut':p.editedAt?'Đã chỉnh sửa':p.assignments.length?'Đã gán nhạc':'Chưa gán nhạc'}</td><td><div class="row"><button data-remix-edit="${esc(p.id)}">Chỉnh sửa</button><button data-remix-view="${esc(p.id)}">Xem</button><button title="Giữ nguyên dự án khi cân bằng hoặc cập nhật cả bộ; vẫn chỉnh sửa riêng được" data-remix-lock="${esc(p.id)}">${p.installed?(p.mixUnlocked&&!p.locked?'🔓 Cho phép trộn':'🔒 Mở khóa để trộn'):p.locked?'🔒 Giữ nguyên':'🔓 Cho phép trộn'}</button></div></td></tr>`).join('');
