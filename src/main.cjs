@@ -82,6 +82,7 @@ app.whenReady().then(async()=>{
     transitions:async()=>{const result=await scanTransitions();store.pref('transitionCatalog',JSON.stringify(result.items));return result;},
     load:async(id)=>{if(id)current=store.pref('channel-active:'+id)||id;store.pref('active',current);const s=store.get(current);return view(s.groups.some(g=>!g.orderVersion)?await prepareOrder(s):s);},
     channelCreate:async({id,name})=>{const s=channels.create(store,id,name);current=s.id;store.pref('active',current);store.pref('channel-active:'+s.rootNicheId,current);return view(s);},
+    channelDeleteScope:async(id)=>channels.removalScope(store,id).map(c=>c.niche),
     channelDelete:async(id)=>{current=channels.remove(store,id);return view(store.get(current));},
     channelSwitch:async(choice)=>{const s=channels.select(store,current,choice);current=s.id;store.pref('active',current);store.pref('channel-active:'+s.rootNicheId,current);return view(s);},
     remixList:async(id)=>({batches:remix.list(store,id),sources:remix.sourceProjects(store,id),channels:channels.list(store,id)}),

@@ -50,15 +50,23 @@ function create(store,id,name){
  delete s.importSource;
  const nested=store.db.isTransaction;if(!nested)store.db.exec('BEGIN IMMEDIATE');try{store.db.prepare('INSERT INTO channels VALUES(?,?,?)').run(s.id,root,name);store.nameDraft(s);store.save(s);if(!nested)store.db.exec('COMMIT');}catch(e){if(!nested)store.db.exec('ROLLBACK');throw e;}return s;
 }
-function remove(store,id){
+function removalScope(store,id){
  const c=store.db.prepare('SELECT * FROM channels WHERE id=?').get(id);if(!c)throw Error('Không tìm thấy kênh.');if(c.id===c.root_id)throw Error('Không được xóa Kênh gốc.');
+ return store.db.prepare('SELECT c.*,n.name AS niche FROM channels c JOIN niches n ON n.id=c.root_id WHERE c.id<>c.root_id ORDER BY n.name').all().filter(row=>row.name.toLocaleLowerCase()===c.name.toLocaleLowerCase());
+}
+function remove(store,selectedId){
  store.db.exec('BEGIN IMMEDIATE');try{
+ const scope=removalScope(store,selectedId),root=scope.find(c=>c.id===selectedId).root_id;
+ for(const c of scope){
+ const id=c.id;
  const snapshot={channel:c,deletedAt:new Date().toISOString(),workspace:store.db.prepare('SELECT * FROM niches WHERE id=?').get(id),batches:store.db.prepare('SELECT * FROM remix_batches WHERE channel_id=?').all(id)};
  for(const table of ['projects','usage','reservations'])snapshot[table]=store.db.prepare('SELECT * FROM '+table+' WHERE niche_id=?').all(id);
  store.pref('deleted-channel:'+id,JSON.stringify(snapshot));
  for(const table of ['projects','usage','reservations'])store.db.prepare('DELETE FROM '+table+' WHERE niche_id=?').run(id);
  store.db.prepare('DELETE FROM remix_batches WHERE channel_id=?').run(id);store.db.prepare('DELETE FROM niches WHERE id=?').run(id);store.db.prepare('DELETE FROM channels WHERE id=?').run(id);
- store.pref('channel-active:'+c.root_id,c.root_id);store.pref('active',c.root_id);store.db.exec('COMMIT');return c.root_id;
+ if(store.pref('channel-active:'+c.root_id)===id||id===selectedId)store.pref('channel-active:'+c.root_id,c.root_id);
+ }
+ store.pref('active',root);store.db.exec('COMMIT');return root;
  }catch(e){store.db.exec('ROLLBACK');throw e;}
 }
-module.exports={schema,list,headerList,select,decorate,syncLibrary,create,remove};
+module.exports={schema,list,headerList,select,decorate,syncLibrary,create,removalScope,remove};
