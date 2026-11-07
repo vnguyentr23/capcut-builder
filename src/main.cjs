@@ -30,7 +30,7 @@ app.whenReady().then(async()=>{
   let current=store.pref('active')||store.list()[0]?.id;
   if(!current)current=store.create('Ngách đầu tiên').id;
   const hydrate=s=>{const map=store.hydrate(s),match=require('./blacklist.cjs').matcher(store);for(const [id,m] of map){const blocked=match(m);if(blocked)map.set(id,{...m,copyrightBlocked:blocked.name,error:'Bị chặn bản quyền: '+blocked.name});}for(const [id,m] of map)if(s.sources&&Object.hasOwn(s.sources,id))map.set(id,{...m,source:s.sources[id]});return map;};
-  function view(s){return {fontCatalog:JSON.parse(store.pref('fontCatalog')||'[]'),canNewDraft:store.canNewDraft(s),channels:channels.list(store,s.id),effectCatalog:JSON.parse(store.pref('effectCatalog')||'[]'),transitionCatalog:JSON.parse(store.pref('transitionCatalog')||'[]'),state:s,media:[...hydrate(s).values()],used:[...store.blocked(s.id,s.draft.id)],history:store.history(s.id),niches:store.list(),output};}
+  function view(s){return {fontCatalog:JSON.parse(store.pref('fontCatalog')||'[]'),canNewDraft:store.canNewDraft(s),channels:channels.headerList(store,s.id),effectCatalog:JSON.parse(store.pref('effectCatalog')||'[]'),transitionCatalog:JSON.parse(store.pref('transitionCatalog')||'[]'),state:s,media:[...hydrate(s).values()],used:[...store.blocked(s.id,s.draft.id)],history:store.history(s.id),niches:store.list(),output};}
   async function prepareOrder(s){
     const map=hydrate(s),pending=[...map.values()].filter(m=>m.createdAt===undefined);let cursor=0;
     await Promise.all(Array.from({length:Math.min(16,pending.length)},async()=>{while(cursor<pending.length){const m=pending[cursor++];try{m.createdAt=(await fs.promises.stat(m.path)).birthtimeMs;store.putMedia({...store.media(m.id),createdAt:m.createdAt});}catch{m.createdAt=0;}}}));
@@ -83,7 +83,7 @@ app.whenReady().then(async()=>{
     load:async(id)=>{if(id)current=store.pref('channel-active:'+id)||id;store.pref('active',current);const s=store.get(current);return view(s.groups.some(g=>!g.orderVersion)?await prepareOrder(s):s);},
     channelCreate:async({id,name})=>{const s=channels.create(store,id,name);current=s.id;store.pref('active',current);store.pref('channel-active:'+s.rootNicheId,current);return view(s);},
     channelDelete:async(id)=>{current=channels.remove(store,id);return view(store.get(current));},
-    channelSwitch:async(id)=>{const s=store.get(id);current=id;store.pref('active',id);store.pref('channel-active:'+s.rootNicheId,id);return view(s);},
+    channelSwitch:async(choice)=>{const s=channels.select(store,current,choice);current=s.id;store.pref('active',current);store.pref('channel-active:'+s.rootNicheId,current);return view(s);},
     remixList:async(id)=>({batches:remix.list(store,id),sources:remix.sourceProjects(store,id),channels:channels.list(store,id)}),
     remixSettings:async(id)=>remix.preferences(store,id),
     remixGet:async(id)=>(async()=>{const b=remix.get(store,id);await remix.refreshReuse(store,b);const u=b.projects.length?remix.sourceUpdate(store,b):null;return {...remix.present(b),sourceUpdate:u?{name:u.source.name,count:u.newSources.length}:null};})(),

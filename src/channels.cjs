@@ -8,6 +8,27 @@ function schema(store){
  for(const row of store.db.prepare('SELECT id FROM niches').all())if(!store.db.prepare('SELECT id FROM channels WHERE id=?').get(row.id))store.db.prepare('INSERT INTO channels VALUES(?,?,?)').run(row.id,row.id,'Kênh gốc');
 }
 function list(store,id){const c=store.db.prepare('SELECT * FROM channels WHERE id=?').get(id);return store.db.prepare('SELECT * FROM channels WHERE root_id=? ORDER BY rowid').all(c?.root_id||id);}
+// The header lists channel names across niches. Only materialize a workspace on selection.
+function headerList(store,id){
+ const local=list(store,id),seen=new Set(local.map(c=>c.name.toLocaleLowerCase()));
+ const options=[...local];
+ for(const {name} of store.db.prepare('SELECT DISTINCT name FROM channels WHERE id<>root_id ORDER BY name').all()){
+  const key=name.toLocaleLowerCase();
+  if(!seen.has(key)){seen.add(key);options.push({id:'shared:'+name,name});}
+ }
+ return options;
+}
+function select(store,current,choice){
+ const local=list(store,current);
+ const existing=local.find(c=>c.id===choice);
+ if(existing)return store.get(existing.id);
+ if(!choice.startsWith('shared:'))throw Error('Kênh không thuộc ngách đang chọn.');
+ const name=choice.slice(7),key=name.toLocaleLowerCase();
+ const workspace=local.find(c=>c.name.toLocaleLowerCase()===key);
+ if(workspace)return store.get(workspace.id);
+ if(!headerList(store,current).some(c=>c.id===choice))throw Error('Không tìm thấy kênh.');
+ return create(store,local.find(c=>c.id===c.root_id).id,name);
+}
 function decorate(store,s){
  const c=store.db.prepare('SELECT * FROM channels WHERE id=?').get(s.id);if(!c)return s;
  s.rootNicheId=c.root_id;s.channelName=c.name;
@@ -40,4 +61,4 @@ function remove(store,id){
  store.pref('channel-active:'+c.root_id,c.root_id);store.pref('active',c.root_id);store.db.exec('COMMIT');return c.root_id;
  }catch(e){store.db.exec('ROLLBACK');throw e;}
 }
-module.exports={schema,list,decorate,syncLibrary,create,remove};
+module.exports={schema,list,headerList,select,decorate,syncLibrary,create,remove};

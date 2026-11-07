@@ -117,3 +117,19 @@ test('Source picker keeps newest CapCut save per normalized project name, ignori
   assert.equal(store.history(root.id).length,4);
  }finally{store.close();}
 });
+
+test('Header shares existing channels across niches and selects an isolated local workspace',()=>{
+ const s=new Store(':memory:');try{
+  const a=s.create('A'),b=s.create('B'),ch=channels.create(s,a.id,'Kênh 2');
+  s.reserve(ch.id,'old',{clips:[{role:'body',fingerprint:'fp'}]});
+  const opt=channels.headerList(s,b.id).find(c=>c.name==='Kênh 2');
+  assert(opt);assert.equal(channels.list(s,b.id).length,1);
+  const target=channels.select(s,b.id,opt.id);
+  assert.equal(target.rootNicheId,b.id);assert.equal(target.channelName,ch.channelName);
+  assert.notEqual(target.id,ch.id);assert.equal(s.blocked(target.id,'new').size,0);
+  assert.equal(channels.select(s,b.id,opt.id).id,target.id);
+  assert.equal(channels.headerList(s,b.id).filter(c=>c.name===ch.channelName).length,1);
+  assert.equal(channels.select(s,a.id,ch.id).id,ch.id);
+  assert.throws(()=>channels.select(s,b.id,ch.id),/ngách/);
+ }finally{s.close();}
+});
