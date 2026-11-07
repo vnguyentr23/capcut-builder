@@ -108,12 +108,13 @@ for(const legacy of [false,true])test('Restore from old package replaces only un
   for(const m of old.draft.materials.videos)m.path=file;
   current.draft.duration=1;remix.save(store,batch);
   const pkg={body:{batch:{id:'original-batch',settings:defaults(),projects:[old]}}};
-  if(legacy){delete batch.originPackageId;delete current.originPackageId;old.sourceName=current.sourceName='PHOTO_1';remix.save(store,batch);}
+  if(legacy){delete batch.originPackageId;delete current.originPackageId;old.sourceName=current.sourceName='PHOTO_1';current.name='abac-k1-photo_28';remix.save(store,batch);}
   const restore=require('../src/remix-package-restore.cjs'),mappings={[file.replaceAll('\\','/').toLowerCase()]:file};
   const plan=restore.preview(store,batch.id,pkg,mappings);
   assert.equal(plan.proposed.size,1);assert.equal(remix.get(store,batch.id).projects[0].draft.duration,1);
   assert.equal(restore.apply(store,plan),1);const saved=remix.get(store,batch.id);
   assert.equal(saved.projects[0].id,current.id);assert.equal(saved.projects[0].installed,current.installed);assert.deepEqual(saved.projects[0].draft.tracks,old.draft.tracks);assert.deepEqual(saved.projects[1],fixed);
+  assert.equal(saved.projects[0].name,current.name);assert.equal(plan.rows[0].sourceName,old.name);
   assert.throws(()=>restore.apply(store,plan),/thay đổi/);
  }finally{store.close();}
 });
@@ -126,4 +127,7 @@ test('Package recovery matching refuses name-only guesses and retains ambiguous 
  assert.deepEqual(matchesFor({...p,sourceName:undefined},[{...q,sourceName:undefined}]),[]);
  assert.equal(matchesFor(p,[q,{...q,id:'duplicate'}]).length,2);
  assert.deepEqual(matchesFor({...p,originPackageId:'old',name:'renamed'},[q]),[q]);
+ assert.deepEqual(matchesFor({...p,name:'renumbered_28'},[q]),[q]);
+ assert.deepEqual(matchesFor({...p,name:'renamed',sourceId:'source-1',sourceName:'renamed source'},[{...q,sourceId:'source-1'}]),[{...q,sourceId:'source-1'}]);
+ assert.equal(matchesFor({...p,name:'renamed'},[q,{...q,id:'duplicate',name:'other'}]).length,2);
 });

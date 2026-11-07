@@ -9,7 +9,11 @@ const norm=file=>path.resolve(file).replaceAll('\\','/').toLowerCase();
 function matchesFor(p,projects){
  const byId=projects.filter(q=>lineage(p).some(key=>lineage(q).includes(key)));
  if(byId.length)return byId;
- return projects.filter(q=>p.name&&p.sourceName&&q.name===p.name&&q.sourceName===p.sourceName);
+ const byName=projects.filter(q=>p.name&&p.sourceName&&q.name===p.name&&q.sourceName===p.sourceName);
+ if(byName.length)return byName;
+ const bySourceId=projects.filter(q=>p.sourceId&&q.sourceId===p.sourceId);
+ if(bySourceId.length)return bySourceId;
+ return projects.filter(q=>p.sourceName&&q.sourceName===p.sourceName);
 }
 
 function preview(store,id,pkg,mappings){
@@ -19,7 +23,7 @@ function preview(store,id,pkg,mappings){
  for(const p of batch.projects.filter(eligible)){
   const row={name:p.name,before:p.draft.duration/1e6};rows.push(row);
   const matches=matchesFor(p,old.projects);
-  if(matches.length!==1){row.reason='Không xác định duy nhất video tương ứng';continue;}
+  if(matches.length!==1){row.reason=matches.length?'Có nhiều video cùng nguồn trong gói; chưa thể chọn tự động':'Không tìm thấy video cùng ID hoặc cùng nguồn trong gói';continue;}
   if(batch.projects.filter(other=>matchesFor(other,old.projects).includes(matches[0])).length!==1){row.reason='Một video trong gói khớp với nhiều dự án hiện tại';continue;}
   row.sourceName=matches[0].name;
   const q=matches[0],required=[

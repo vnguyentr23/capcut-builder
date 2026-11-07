@@ -27,7 +27,7 @@ document.body.append(restoreDialog);
 restoreDialog.querySelector('[data-close]').onclick=()=>restoreDialog.close();
 restorePackageButton.onclick=()=>run('Đối chiếu gói nhân bản…',async()=>{
  const id=remixBatch.id,plan=await api('remixRestorePreview',{id});if(!plan)return;
- restoreDialog.querySelector('pre').textContent=plan.rows.map(r=>r.name+' · '+(r.reason||fmt(r.before)+' → '+fmt(r.after))).join('\n')||'Chưa có video đang mở khóa.';
+ restoreDialog.querySelector('pre').textContent=plan.rows.map(r=>r.name+(r.sourceName?' ← '+r.sourceName:'')+' · '+(r.reason||fmt(r.before)+' → '+fmt(r.after))).join('\n')||'Chưa có video đang mở khóa.';
  const apply=restoreDialog.querySelector('[data-save]');apply.disabled=!plan.count;
  apply.onclick=()=>run('Khôi phục video…',async()=>{const count=await api('remixRestoreApply',{token:plan.token});restoreDialog.close();remixBatch=await api('remixGet',id);renderRemix();toast('Đã khôi phục '+count+' video từ gói cũ.');});
  restoreDialog.showModal();
