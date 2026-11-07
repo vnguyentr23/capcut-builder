@@ -28,6 +28,22 @@ $('#deleteChannel').onclick=async()=>{
  if(!await confirmRemoval('Xóa kênh “'+name+'” khỏi tất cả ngách?', 'Các ngách bị ảnh hưởng: '+niches.join(', ')+'. Bản nháp, bộ nhân bản và lịch sử của kênh trong các ngách này sẽ bị xóa khỏi tool. File footage và dự án CapCut trên ổ đĩa được giữ nguyên.'))return;
  await run('Xóa kênh…',async()=>{stopFootage();accept(await api('channelDelete',id));await loadRemix();toast('Đã xóa kênh “'+name+'” khỏi tất cả ngách.');});
 };
+const trashDialog=document.createElement('dialog');
+trashDialog.innerHTML='<h2>Khôi phục kênh đã xóa</h2><p>Chọn các bản cần lấy lại. Nếu ngách đã bị xóa, tool sẽ khôi phục cả ngách gốc cùng dự án và lịch sử của nó.</p><div data-list style="max-height:48vh;overflow:auto"></div><div class="row"><button data-close>Đóng</button><button data-restore class="primary">Khôi phục mục đã chọn</button></div>';
+document.body.append(trashDialog);
+trashDialog.querySelector('[data-close]').onclick=()=>trashDialog.close();
+$('#deletedChannels').onclick=()=>run('Đọc các kênh đã xóa…',async()=>{
+ const rows=await api('deletedChannels'),list=trashDialog.querySelector('[data-list]'),save=trashDialog.querySelector('[data-restore]');
+ list.innerHTML=rows.map((r,i)=>'<label style="display:block"><input type="checkbox" value="'+i+'"> '+esc(r.name)+' · '+esc(r.niche)+' · '+esc(new Date(r.deletedAt).toLocaleString('vi-VN'))+(r.restoreRoot?' · Khôi phục cả ngách':'')+'</label>').join('')||'Chưa có kênh đã xóa.';
+ save.disabled=true;
+ list.onchange=()=>{save.disabled=!list.querySelector('input:checked');};
+ save.onclick=()=>run('Khôi phục kênh và ngách…',async()=>{
+  const selected=[...list.querySelectorAll('input:checked')].map(el=>rows[Number(el.value)]);
+  accept(await api('restoreChannels',selected.map(({key,id})=>({key,id}))));
+  trashDialog.close();await loadRemix();toast('Đã khôi phục '+selected.length+' mục.');
+ });
+ trashDialog.showModal();
+});
 $('#newChannel').onclick=newChannel;
 $('#showEditor').onclick=()=>{document.body.classList.remove('remixMode');$('#remixPanel').hidden=true;render();};
 $('#showRemix').onclick=()=>run('Mở nhân bản…',async()=>{document.body.classList.add('remixMode');render();$('#remixPanel').hidden=false;await loadRemix();});
