@@ -89,7 +89,7 @@ app.whenReady().then(async()=>{
     channelSwitch:async(choice)=>{const s=channels.select(store,current,choice);current=s.id;store.pref('active',current);store.pref('channel-active:'+s.rootNicheId,current);return view(s);},
     remixList:async(id)=>({batches:remix.list(store,id),sources:remix.sourceProjects(store,id),channels:channels.list(store,id)}),
     remixSettings:async(id)=>remix.preferences(store,id),
-    remixGet:async(id)=>(async()=>{const b=remix.get(store,id);await remix.refreshReuse(store,b);const u=b.projects.length?remix.sourceUpdate(store,b):null;return {...remix.present(b),sourceUpdate:u?{name:u.source.name,count:u.newSources.length}:null};})(),
+    remixGet:async(id)=>(async()=>{const b=remix.get(store,id);remix.upgradeProjectNames(store,b);await remix.refreshReuse(store,b);const u=b.projects.length?remix.sourceUpdate(store,b):null;return {...remix.present(b),sourceUpdate:u?{name:u.source.name,count:u.newSources.length}:null};})(),
     remixSaveSource:async(p)=>remix.present(await remix.saveSource(store,p)),
     remixCreate:async(p)=>remix.present(await remix.create(store,p)),
     remixAddToSource:async p=>remix.present(await remix.addToSource(store,p)),

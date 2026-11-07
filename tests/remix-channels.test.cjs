@@ -134,3 +134,14 @@ test('Header shares existing channels across niches and selects an isolated loca
   assert.throws(()=>channels.select(s,b.id,ch.id),/ngách/);
  }finally{s.close();}
 });
+test('Existing legacy batch names keep suffixes and handle collisions without changing footage or installed paths',()=>{
+ const store=new Store(':memory:');try{
+  const root=store.create('PHOTO'),channel=channels.create(store,root.id,'The Goofy Ark');
+  const names=['The Goofy Ark_1','The Goofy Ark_2','The Goofy Ark_PHOTO_2','Custom'];
+  const b={id:uid(),channelId:channel.id,rootId:root.id,name:'B',sources:[],projects:names.map(name=>({id:uid(),name,draft:{name,tracks:['unchanged']},editUndo:[{name}],installed:'old/'+name}))};
+  remix.save(store,b);remix.upgradeProjectNames(store,b);
+  assert.deepEqual(b.projects.map(p=>p.name),['The Goofy Ark_PHOTO_1','The Goofy Ark_PHOTO_3','The Goofy Ark_PHOTO_2','Custom']);
+  b.projects.forEach((p,i)=>{assert.equal(p.installed,'old/'+names[i]);assert.deepEqual(p.draft.tracks,['unchanged']);assert.equal(p.editUndo[0].name,p.name);});
+  const snapshot=JSON.stringify(b);remix.upgradeProjectNames(store,b);assert.equal(JSON.stringify(b),snapshot);
+ }finally{store.close();}
+});

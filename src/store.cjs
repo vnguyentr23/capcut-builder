@@ -43,9 +43,12 @@ class Store {
   }
   canNewDraft(s){return !!this.db.prepare("SELECT 1 FROM projects WHERE niche_id=? AND status='CREATED' AND (json_extract(snapshot,'$.draft.id')=? OR json_extract(snapshot,'$.projectId')=?) LIMIT 1").get(s.id,s.draft.id,s.draft.id);}
   requireCreatedDraft(s){if(!this.canNewDraft(s))throw Error('Hãy tạo dự án CapCut thành công trước khi tạo dự án mới.');}
-  projectNameSequence(s, draftId=null, exists=()=>false){
+  projectNameBase(s){
     const channel=this.db.prepare('SELECT name FROM channels WHERE id=?').get(s.id)?.name||s.channelName||'Kênh gốc';
-    const base=fixName(channel+'_'+s.name).slice(0,85);
+    return fixName(channel+'_'+s.name).slice(0,85);
+  }
+  projectNameSequence(s, draftId=null, exists=()=>false){
+    const base=this.projectNameBase(s);
     const keys=new Set(),names=new Set();
     for(const row of this.db.prepare('SELECT name,snapshot FROM projects WHERE niche_id=?').all(s.id)){
       const snap=JSON.parse(row.snapshot),id=snap.draft?.id||snap.projectId;

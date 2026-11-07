@@ -10,6 +10,34 @@ function list(store,id){const root=store.get(id).rootNicheId||id;return store.db
 const batchReadCache=new WeakMap();
 function readCached(store,id){let cache=batchReadCache.get(store);if(!cache){cache=new Map();batchReadCache.set(store,cache);}const meta=store.db.prepare('SELECT updated FROM remix_batches INDEXED BY remix_identity_updated WHERE id=?').get(id);if(!meta)throw Error('Không tìm thấy bộ dự án.');let entry=cache.get(id);if(!entry||entry.updated!==meta.updated){const r=store.db.prepare('SELECT data FROM remix_batches WHERE id=?').get(id);entry={updated:meta.updated,value:JSON.parse(r.data)};cache.clear();cache.set(id,entry);}return entry.value;}
 function get(store,id){const r=store.db.prepare('SELECT data FROM remix_batches WHERE id=?').get(id);if(!r)throw Error('Không tìm thấy bộ dự án.');return JSON.parse(r.data);}
+function upgradeProjectNames(store,batch){
+ if(!batch.projects.length)return;
+ const workspace=store.get(batch.channelId),base=store.projectNameBase(workspace);
+ const legacy=(workspace.channelName==='Kênh gốc'?workspace.name:workspace.channelName)+'_';
+ const candidates=batch.projects.flatMap(p=>{
+  if(!p.name.startsWith(legacy))return [];
+  const suffix=p.name.slice(legacy.length);
+  return /^[1-9]\d*$/.test(suffix)?[{p,wanted:base+'_'+suffix}]:[];
+ });
+ if(!candidates.length)return;
+ const used=new Set(store.history(batch.channelId).map(p=>p.name.toLocaleLowerCase()));
+ for(const row of store.db.prepare('SELECT summary FROM remix_batches WHERE channel_id=?').all(batch.channelId)){
+  for(const n of JSON.parse(row.summary).names||[])used.add(n.toLocaleLowerCase());
+ }
+ if(workspace.draft.body.length||workspace.draft.hook.length)used.add(workspace.draft.name.toLocaleLowerCase());
+ const fallback=[];
+ function rename(p,name){
+  const previous=p.name;p.name=name;p.draft.name=name;
+  for(const saved of p.editUndo||[])if(saved.name===previous)saved.name=name;
+  used.add(name.toLocaleLowerCase());
+ }
+ for(const {p,wanted} of candidates){
+  if(used.has(wanted.toLocaleLowerCase()))fallback.push(p);else rename(p,wanted);
+ }
+ const next=store.projectNameSequence(workspace,null,n=>used.has(n.toLocaleLowerCase()));
+ for(const p of fallback)rename(p,next().name);
+ save(store,batch);
+}
 function mediaPath(store,id,projectId,unitId){const b=readCached(store,id),p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy bản nháp.');const units=[...(p.editor?.blocks||[]).flatMap(b=>b.units),...(p.editor?.ending?[p.editor.ending]:[])];return units.find(u=>u.id===unitId)?.path;}
 function musicPreview(store,id,projectId){const b=readCached(store,id),p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy bản nháp.');return {p,settings:require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings)};}
 
@@ -289,4 +317,4 @@ function removeBatch(store,{id,stateId}){
  }catch(e){store.db.exec('ROLLBACK');throw e;}
  return true;
 }
-module.exports={reuseStats,refreshReuse,addToSource,sourceUpdate,updateFromSource,appendSources,mediaPath,musicPreview,prepare,removeBatch,present,saveSource,sourcesFromBatch,preferences,list,get,save,sourceProjects,analyzeSources,mix,capture,create,reroll,lock,assignMusic,withMusic,check,install,allSignatures};
+module.exports={upgradeProjectNames,reuseStats,refreshReuse,addToSource,sourceUpdate,updateFromSource,appendSources,mediaPath,musicPreview,prepare,removeBatch,present,saveSource,sourcesFromBatch,preferences,list,get,save,sourceProjects,analyzeSources,mix,capture,create,reroll,lock,assignMusic,withMusic,check,install,allSignatures};
