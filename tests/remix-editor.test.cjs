@@ -101,69 +101,6 @@ test('Transitions skip empty Hook and empty middle blocks without duplicate boun
 test('Reblock keeps Hook, native edits and order; clears only Body music and is idempotent',()=>{const p=fixture(),e=edit.init(p),hook=structuredClone(e.blocks[0]),units=structuredClone(e.blocks.slice(1).flatMap(b=>b.units));p.assignments=[{block:0,sourceDuration:100},{block:1,sourceDuration:100}];assert(edit.reblock(p,3));assert.deepEqual(p.editor.blocks[0],hook);assert.deepEqual(p.editor.blocks.slice(1).map(b=>b.units.length),[3,1]);assert.deepEqual(p.editor.blocks.slice(1).flatMap(b=>b.units),units);assert.equal(p.draft.duration,36e6);assert.deepEqual(p.assignments.map(a=>a.block),[0]);assert.equal(edit.reblock(p,3),false);assert.throws(()=>edit.reblock(p,0));});
 test('Batch reblock skips exported projects and saves undo',()=>{const store=new Store(':memory:');try{const state=store.create('N'),p=fixture(),done=fixture();done.installed='capcut';const batch={id:uid(),rootId:state.id,channelId:state.id,name:'Batch',projects:[p,done],sources:[],settings:defaults()};remix.save(store,batch);const settings=require('../src/remix-settings.cjs'),info=settings.batchSettings(store,batch.id);info.settings.reblockEnabled=true;info.settings.blockSize=3;settings.applyBatch(store,{id:batch.id,settings:info.settings,updated:info.updated});const saved=remix.get(store,batch.id);assert.deepEqual(saved.projects[1],done);assert.deepEqual(saved.projects[0].editor.blocks.map(b=>b.units.length),[2,3,1]);assert.equal(saved.projects[0].editUndo.length,1);}finally{store.close();}});
 test('Exported draft can edit trims, settings, swap existing Body and undo without unlocking batch shuffle',async()=>{const store=new Store(':memory:');try{const state=store.create('Edit exported'),p=fixture();p.installed='existing-capcut';p.locked=true;const b={id:uid(),name:'Batch',rootId:state.id,channelId:state.id,projects:[p],sources:[],settings:defaults()};remix.save(store,b);let shown=edit.open(store,b.id,p.id);const u=shown.blocks[1].units[0],parts=structuredClone(u.parts);parts[0].start+=1;shown=await edit.mutate(store,{id:b.id,projectId:p.id,revision:shown.revision,op:'parts',unitId:u.id,parts});assert.equal(shown.blocks[1].units[0].parts[0].start,3);const settings=structuredClone(shown.settings);settings.audioVolumeDb=-18;shown=await edit.mutate(store,{id:b.id,projectId:p.id,revision:shown.revision,op:'settings',settings});assert.equal(shown.settings.audioVolumeDb,-18);shown=await edit.mutate(store,{id:b.id,projectId:p.id,revision:shown.revision,op:'swap',unitId:shown.blocks[1].units[0].id,otherId:shown.blocks[2].units[0].id});assert.equal(shown.blocks[2].units[0].id,u.id);shown=await edit.mutate(store,{id:b.id,projectId:p.id,revision:shown.revision,op:'undo'});assert.equal(shown.blocks[1].units[0].id,u.id);const saved=remix.get(store,b.id).projects[0];assert.equal(saved.installed,'existing-capcut');assert.equal(saved.locked,true);}finally{store.close();}});
-for(const legacy of [false,true])test('Restore from old package replaces only unlocked matching drafts and preserves export state; legacy='+legacy,()=>{
- const store=new Store(':memory:');try{
-  const state=store.create('PHOTO'),old=fixture(),fixed=fixture();fixed.locked=true;for(const b of fixed.blocks)for(const c of b.clips)c.fingerprint='fixed-'+c.fingerprint;
-  const current=structuredClone(old);current.id=uid();current.originPackageId=old.id;current.installed='capcut-current';current.mixUnlocked=true;current.locked=false;
-  const batch={id:uid(),name:'PHOTO',originPackageId:'original-batch',rootId:state.id,channelId:state.id,settings:defaults(),sources:[],projects:[current,fixed]};
-  const file=__filename;
-  for(const m of old.draft.materials.videos)m.path=file;
-  current.draft.duration=1;remix.save(store,batch);
-  const pkg={body:{batch:{id:'original-batch',settings:defaults(),projects:[old]}}};
-  if(legacy){delete batch.originPackageId;delete current.originPackageId;old.sourceName=current.sourceName='PHOTO_1';current.name='abac-k1-photo_28';remix.save(store,batch);}
-  const restore=require('../src/remix-package-restore.cjs'),mappings={[file.replaceAll('\\','/').toLowerCase()]:file};
-  const plan=restore.preview(store,batch.id,pkg,mappings);
-  assert.equal(plan.proposed.size,1);assert.equal(remix.get(store,batch.id).projects[0].draft.duration,1);
-  assert.equal(restore.apply(store,plan),1);const saved=remix.get(store,batch.id);
-  assert.equal(saved.projects[0].id,current.id);assert.equal(saved.projects[0].installed,current.installed);assert.deepEqual(saved.projects[0].draft.tracks,old.draft.tracks);assert.deepEqual(saved.projects[1],fixed);
-  assert.equal(saved.projects[0].name,current.name);assert.equal(plan.rows[0].sourceName,old.name);
-  assert.throws(()=>restore.apply(store,plan),/thay đổi/);
- }finally{store.close();}
-});
-
-test('Package recovery matching refuses name-only guesses and retains ambiguous matches for rejection',()=>{
- const {matchesFor}=require('../src/remix-package-restore.cjs');
- const p={id:'new',name:'channel_1',sourceName:'PHOTO_1'},q={id:'old',name:'channel_1',sourceName:'PHOTO_1'};
- assert.deepEqual(matchesFor(p,[q]),[q]);
- assert.deepEqual(matchesFor(p,[{...q,sourceName:'PHOTO_2'}]),[]);
- assert.deepEqual(matchesFor({...p,sourceName:undefined},[{...q,sourceName:undefined}]),[]);
- assert.equal(matchesFor(p,[q,{...q,id:'duplicate'}]).length,2);
- assert.deepEqual(matchesFor({...p,originPackageId:'old',name:'renamed'},[q]),[q]);
- assert.deepEqual(matchesFor({...p,name:'renumbered_28'},[q]),[q]);
- assert.deepEqual(matchesFor({...p,name:'renamed',sourceId:'source-1',sourceName:'renamed source'},[{...q,sourceId:'source-1'}]),[{...q,sourceId:'source-1'}]);
- assert.equal(matchesFor({...p,name:'renamed'},[q,{...q,id:'duplicate',name:'other'}]).length,2);
-});
-
-for(const legacy of [false,true])test('Original imported package restores renamed edited projects without source metadata; legacy='+legacy,async()=>{
- const source=new Store(':memory:'),target=new Store(':memory:');
- const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ccb-restore-import-'));
- try{
-  const state=source.create('PHOTO'),old=fixture();
-  for(const m of old.draft.materials.videos)m.path=__filename;
-  const batch={id:uid(),name:'Original',rootId:state.id,channelId:state.id,settings:defaults(),sources:[],projects:[old]};remix.save(source,batch);
-  const transfer=require('../src/remix-transfer.cjs'),restore=require('../src/remix-package-restore.cjs'),file=path.join(dir,'old.ccb-remix');
-  await transfer.exportPackage(source,batch.id,file);const pkg=transfer.readPackage(file);
-  const mappings={[__filename.replaceAll('\\','/').toLowerCase()]:__filename};
-  const imported=(await transfer.importPackage(target,pkg,{mappings,missing:[]})).batch;
-  const p=imported.projects[0];assert.equal(p.importOrigins.at(-1).projectId,old.id);
-  p.name='abac-k1-photo_28';p.sourceName='changed';p.sourceId='changed';p.installed='created-capcut';p.mixUnlocked=true;p.locked=false;
-  if(legacy){delete p.importOrigins;delete p.originPackageId;delete imported.originPackageId;}
-  const e=edit.init(p);e.blocks[1].units[0]=require('../src/remix-allocation.cjs').empty('Missing');edit.rebuild(p);remix.save(target,imported);
-  assert(p.draft.duration<old.draft.duration);
-  const plan=restore.preview(target,imported.id,pkg,mappings);assert.equal(plan.proposed.size,1);
-  restore.apply(target,plan);const saved=remix.get(target,imported.id).projects[0];
-  assert.equal(saved.name,p.name);assert.equal(saved.installed,p.installed);assert.deepEqual(saved.draft.tracks,old.draft.tracks);
-  assert.equal(saved.importOrigins.at(-1).projectId,old.id);
- }finally{source.close();target.close();fs.rmSync(dir,{recursive:true,force:true});}
-});
-
-test('Legacy draft identity requires verified package and rejects ambiguous timelines',()=>{
- const {matchesFor}=require('../src/remix-package-restore.cjs'),p={id:'new',draft:{id:'native'}},q={id:'old',draft:{id:'native'}};
- assert.deepEqual(matchesFor(p,[q]),[]);
- assert.deepEqual(matchesFor(p,[q],{samePackage:true}),[q]);
- assert.equal(matchesFor(p,[q,{...q,id:'another'}],{samePackage:true}).length,2);
-});
-
 test('Opening, editing and failed export never erase conflicting footage in any draft',async()=>{
  const store=new Store(':memory:');try{
   const state=store.create('No destructive validation'),p=fixture(),other=fixture();other.name='Other';

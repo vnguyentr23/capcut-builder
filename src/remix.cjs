@@ -161,41 +161,6 @@ function mixAddedUnits(batch,fresh,sources){
  }
  for(const p of changed){p.assignments=[];p.editUndo=[];p.editor.revision++;edit.rebuild(p);p.editedAt=new Date().toISOString();}
 }
-async function fillSourceGaps(store,id){
- const batch=get(store,id),version=batch.updated;
- const parent=sourceUpdate(store,batch)?.source;
- const snapshots=parent?.sources?.length?parent.sources:batch.sources;
- if(!snapshots?.length)throw Error('Bộ này thiếu timeline nguồn. Hãy nhập gói bộ nguồn của cùng ngách rồi thử lại.');
- const sources=await analyzeSources(snapshots,batch.options);
- const edit=require('./remix-editor.cjs'),allocation=require('./remix-allocation.cjs');
- const blocked=require('./blacklist.cjs').matcher(store);
- const used=require('./remix-used.cjs')(store,batch.channelId,batch);
- for(const p of batch.projects)for(const hash of allocation.bodyHashes(p))used.add(hash);
- let restored=0,remaining=0;
- for(const p of batch.projects){
-  if(p.locked || (p.installed && !p.mixUnlocked) || !p.editor)continue;
-  const local=new Set(p.editor.blocks.flatMap(b=>b.units.map(u=>u.fingerprint)));
-  let changed=false;
-  for(const [bi,b] of p.editor.blocks.entries())for(const [slot,unit] of b.units.entries()){
-   if(!unit.empty)continue;
-   let selected;
-   for(const source of sources){
-    for(let n=bi?Math.max(1,bi-1):0;n<=(bi?bi+1:0);n++){
-     const candidate=source.blocks[n]?.units[slot];
-     if(candidate&&!blocked(candidate)&&!local.has(candidate.identity)&&(!bi||!used.has(candidate.identity))){selected={source,candidate};break;}
-    }
-    if(selected)break;
-   }
-   if(!selected){remaining++;continue;}
-   const {source,candidate}=selected;
-   b.units[slot]=edit.pack(source.draft,candidate.segments,candidate.identity,candidate.name);
-   local.add(candidate.identity);if(bi)used.add(candidate.identity);changed=true;restored++;
-  }
-  if(changed){p.editor.revision++;p.editUndo=[];edit.rebuild(p);}
- }
- if(restored){if(get(store,id).updated!==version)throw Error('Bộ đã thay đổi. Hãy mở lại.');save(store,batch);}
- return {restored,remaining};
-}
 async function addToSource(store,{id,stateId,sourceIds}){
  const batch=get(store,id),root=store.get(stateId).rootNicheId||stateId;
  if(batch.rootId!==root||batch.projects.length)throw Error('Chọn bộ nguồn trong ngách đang mở.');
@@ -325,4 +290,4 @@ function removeBatch(store,{id,stateId}){
  }catch(e){store.db.exec('ROLLBACK');throw e;}
  return true;
 }
-module.exports={fillSourceGaps,reuseStats,refreshReuse,addToSource,sourceUpdate,updateFromSource,appendSources,mediaPath,musicPreview,prepare,removeBatch,present,saveSource,sourcesFromBatch,preferences,list,get,save,sourceProjects,analyzeSources,mix,capture,create,reroll,lock,assignMusic,withMusic,check,install,allSignatures};
+module.exports={reuseStats,refreshReuse,addToSource,sourceUpdate,updateFromSource,appendSources,mediaPath,musicPreview,prepare,removeBatch,present,saveSource,sourcesFromBatch,preferences,list,get,save,sourceProjects,analyzeSources,mix,capture,create,reroll,lock,assignMusic,withMusic,check,install,allSignatures};
