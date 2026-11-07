@@ -3,6 +3,26 @@ const {uid}=require('./domain.cjs');
 function empty(reason){return {id:uid(),empty:true,reason,name:'Vị trí trống',fingerprint:null,materials:{},segments:[],texts:[]};}
 function bodyHashes(p){return p.editor?p.editor.blocks.slice(1).flatMap(b=>b.units.filter(u=>!u.empty).map(u=>u.fingerprint)):p.blocks.filter(b=>!b.hook).flatMap(b=>b.clips.map(c=>c.fingerprint));}
 function others(batch,id){return new Set(batch.projects.filter(p=>p.id!==id).flatMap(bodyHashes).filter(Boolean));}
+// Validation must never rewrite drafts, especially while opening/editing/exporting one video.
+function conflicts(store,batch,projects){
+ const issues=[];
+ for(const p of projects){
+  const released=new Set(batch.reopenedExports||[]);
+  for(const row of store.db.prepare("SELECT id,snapshot,path FROM projects WHERE niche_id=? AND status='REMIX_CREATED'").all(batch.channelId)){
+   const s=JSON.parse(row.snapshot);
+   if((s.remixBatchId===batch.id&&s.remixProjectId===p.id)||(p.installed&&row.path===p.installed))released.add(row.id);
+  }
+  const context={...batch,reopenedExports:[...released],projects:batch.projects};
+  const exported=require('./remix-used.cjs')(store,batch.channelId,context,p.id),local=new Set();
+  for(const hash of bodyHashes(p).filter(Boolean)){
+   const owner=batch.projects.find(q=>q.id!==p.id&&bodyHashes(q).includes(hash));
+   const reason=owner?'trùng Body của '+owner.name:exported.has(hash)?'đã xuất trong dự án khác':local.has(hash)?'lặp trong Body':null;
+   if(reason)issues.push(p.name+': footage '+hash.slice(0,12)+' '+reason+'. Bản nháp được giữ nguyên.');
+   local.add(hash);
+  }
+ }
+ return issues;
+}
 function reconcile(store,batch,sources=null,regenerated=new Set()){
  const edit=require('./remix-editor.cjs'),match=require('./blacklist.cjs').matcher(store),used=require('./remix-used.cjs')(store,batch.channelId,batch),changed=new Set(),cells=[],initialized=new Set();
  const exported=new Set(used),owners=new Map();
@@ -23,4 +43,4 @@ function reconcile(store,batch,sources=null,regenerated=new Set()){
  for(const p of initialized)if(!changed.has(p))delete p.editor;
  return changed.size;
 }
-module.exports={empty,bodyHashes,others,reconcile};
+module.exports={empty,bodyHashes,others,reconcile,conflicts};

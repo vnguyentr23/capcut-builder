@@ -14,7 +14,7 @@ test('Edits persist per project, stale writes rejected, undo restores native dra
 test('Protected keyframes refuse destructive recut, still allow independent audio changes',()=>{const p=fixture(),u=edit.init(p).blocks[0].units[0];u.segments[0].common_keyframes=[{id:'key',keyframe_list:[{time_offset:10}]}];const parts=edit.summary(u).parts;parts[0].start++;assert.throws(()=>edit.setParts(u,parts),/keyframe/);});
 test('Create CapCut for selected draft only, retain native audio refs and leave other drafts pending',async()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ccb-single-')),store=new Store(path.join(dir,'db.sqlite')),writer=require('../src/capcut-writer.cjs'),running=writer.isRunning;
- try{writer.isRunning=async()=>false;const s=store.create('Single'),p=fixture(),other=fixture();other.name='Other';for(const m of p.draft.materials.videos){m.path=path.join(dir,path.basename(m.path));fs.writeFileSync(m.path,'video');}for(const b of p.blocks)for(const c of b.clips)c.path=path.join(dir,c.path);
+ try{writer.isRunning=async()=>false;const s=store.create('Single'),p=fixture(),other=fixture();other.name='Other';for(const b of other.blocks)for(const c of b.clips)c.fingerprint='a'+c.fingerprint.slice(1);for(const m of p.draft.materials.videos){m.path=path.join(dir,path.basename(m.path));fs.writeFileSync(m.path,'video');}for(const b of p.blocks)for(const c of b.clips)c.path=path.join(dir,c.path);
   p.assignments=p.blocks.map((b,i)=>{const file=path.join(dir,`song-${i}.mp3`);require('node:child_process').execFileSync('C:/ffmpeg/bin/ffmpeg.exe',['-v','error','-f','lavfi','-i','sine=duration=100','-y',file],{windowsHide:true});return {block:i,path:file,name:path.basename(file),fingerprint:String(i).repeat(64),sourceDuration:100,start:b.start+(i===0?3e6:0),duration:b.duration-(i===0?3e6:0)};});
   p.settings=require('../src/remix-settings.cjs').initial();p.settings.ducking.enabled=false;const root=path.join(dir,'capcut');fs.mkdirSync(root);fs.writeFileSync(path.join(root,'root_meta_info.json'),JSON.stringify({all_draft_store:[],draft_ids:[]}));const b={id:uid(),rootId:s.id,channelId:s.id,name:'Batch',sources:[],projects:[p,other],settings:defaults()};remix.save(store,b);
   const result=await remix.install(store,b.id,{detect:async()=>({compatible:true,destination:root,existingNames:[]})},()=>{},p.id);assert(result.projects[0].installed);assert.equal(result.projects[1].installed,null);assert.equal(store.history(s.id).length,1);
@@ -160,4 +160,32 @@ test('Legacy draft identity requires verified package and rejects ambiguous time
  assert.deepEqual(matchesFor(p,[q]),[]);
  assert.deepEqual(matchesFor(p,[q],{samePackage:true}),[q]);
  assert.equal(matchesFor(p,[q,{...q,id:'another'}],{samePackage:true}).length,2);
+});
+
+test('Opening, editing and failed export never erase conflicting footage in any draft',async()=>{
+ const store=new Store(':memory:');try{
+  const state=store.create('No destructive validation'),p=fixture(),other=fixture();other.name='Other';
+  const b={id:uid(),name:'B',rootId:state.id,channelId:state.id,projects:[p,other],sources:[],settings:defaults()};remix.save(store,b);
+  let shown=edit.open(store,b.id,p.id);assert(shown.blocks.every(b=>b.units.every(u=>!u.empty)));
+  const settings=structuredClone(shown.settings);settings.audioVolumeDb=-18;
+  await edit.mutate(store,{id:b.id,projectId:p.id,revision:shown.revision,op:'settings',settings});
+  const before=remix.get(store,b.id);assert.deepEqual(before.projects[1],other);assert.equal(before.projects[0].draft.duration,p.draft.duration);
+  await assert.rejects(remix.install(store,b.id,{detect:()=>{throw Error('Should not detect');}},()=>{},p.id),/trùng Body của Other/);
+  assert.deepEqual(remix.get(store,b.id),before);
+ }finally{store.close();}
+});
+
+test('Export conflict check ignores own export history but still detects other project history',()=>{
+ const store=new Store(':memory:');try{
+  const state=store.create('History'),p=fixture(),b={id:uid(),name:'B',rootId:state.id,channelId:state.id,projects:[p],sources:[],settings:defaults()};
+  p.installed='capcut';remix.save(store,b);const fp=p.blocks[1].clips[0].fingerprint;
+  for(const [id,projectId]of [['own',p.id],['other','other-project']]){
+   store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(id,state.id,id,'REMIX_CREATED',id,new Date().toISOString(),JSON.stringify({remixBatchId:b.id,remixProjectId:projectId}));
+   store.db.prepare('INSERT INTO usage VALUES(?,?,?,?)').run(state.id,fp,id,'body');
+  }
+  const check=require('../src/remix-allocation.cjs').conflicts;
+  assert(check(store,b,[p]).some(x=>x.includes('đã xuất trong dự án khác')));
+  store.db.prepare('DELETE FROM usage WHERE project_id=?').run('other');
+  assert.deepEqual(check(store,b,[p]),[]);
+ }finally{store.close();}
 });

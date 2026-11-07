@@ -301,7 +301,7 @@ function check(batch,store){
  return {ok:!missing.size&&!issues.length,missing:[...missing],issues};
 }
 async function install(store,id,adapter,progress=()=>{},projectId=null){
- const b=get(store,id),selected=b.projects.filter(p=>projectId?p.id===projectId:!p.installed);if(!selected.length)throw Error('Không tìm thấy bản nháp.');if(require('./remix-allocation.cjs').reconcile(store,b))save(store,b);const pre=check({...b,projects:selected.map(p=>({...p,installed:null}))},store);if(!pre.ok)throw Error([...pre.issues,...pre.missing.map(p=>'Thiếu file: '+p)].join('\n'));
+ const b=get(store,id),selected=b.projects.filter(p=>projectId?p.id===projectId:!p.installed);if(!selected.length)throw Error('Không tìm thấy bản nháp.');const conflicts=require('./remix-allocation.cjs').conflicts(store,b,selected);if(conflicts.length)throw Error(conflicts.join('\n'));const pre=check({...b,projects:selected.map(p=>({...p,installed:null}))},store);if(!pre.ok)throw Error([...pre.issues,...pre.missing.map(p=>'Thiếu file: '+p)].join('\n'));
  const state=store.get(b.channelId),detected=await adapter.detect(state.draft.destination);if(!detected.compatible)throw Error(detected.reason);
  const writer=require('./capcut-writer.cjs');if(await writer.isRunning())throw Error('Lưu và đóng CapCut trước khi tạo bộ dự án.');
  const names=new Set(detected.existingNames.map(n=>n.toLowerCase()));for(const p of selected.filter(p=>!p.installed))if(names.has(p.name.toLowerCase()))throw Error('Tên đã tồn tại trong CapCut: '+p.name);
