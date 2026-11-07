@@ -35,7 +35,7 @@ async function importPackage(store,pkg,match){
  let target=channels.list(store,root.id).find(c=>c.name===pkg.body.channelName);if(!target)target=channels.create(store,root.id,pkg.body.channelName);
  const b=rewrite(structuredClone(pkg.body.batch),match.mappings),originalId=b.id;b.id=uid();b.rootId=root.id;b.channelId=target.id;b.name=b.name+' · Nhập';b.originPackageId=originalId;b.inheritedHistory=[...new Set([...(b.inheritedHistory||[]),...(pkg.body.history||[])])];b.transferIssues=match.missing;
  for(const src of b.sources){const next={};for(const [old,fp] of Object.entries(src.fingerprints||{}))next[norm(match.mappings[norm(old)]||old)]=fp;src.fingerprints=next;}
- for(const p of b.projects){p.id=uid();p.installed=null;}
+ for(const p of b.projects){p.originPackageId??=p.id;p.id=uid();p.installed=null;}
  b.settings.destination='';b.musicFolders={hook:'',body:''};b.assetManifest=pkg.body.resources;b.assetBindings=match.mappings;
  const state=store.get(target.id);
  for(const g of pkg.body.library||[]){const items=[];for(const item of g.items){const local=match.mappings[norm(item.path)];if(local){try{items.push((await media.inspect(local,store)).id);}catch{}}}if(items.length){const old=state.groups.find(x=>x.name===g.name);if(old)old.items=[...new Set([...old.items,...items])];else state.groups.push({id:uid(),name:g.name,folder:path.dirname(store.media(items[0]).path),items,pinned:[],excluded:[],lockedOnly:g.name==='HOOKS'});}}
