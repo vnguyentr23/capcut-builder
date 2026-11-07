@@ -87,16 +87,16 @@ async function create(store,{stateId,sourceIds,channelId,name,sourceBatchId,opti
  const allowed=new Set(sourceProjects(store,stateId).map(p=>p.id));if(!sourceBatchId&&(!sourceIds?.length||sourceIds.some(id=>!allowed.has(id))))throw Error('Nguồn không thuộc ngách đang chọn.');
  const parent=sourceBatchId?get(store,sourceBatchId):null;if(parent&&parent.rootId!==root)throw Error('Bộ nguồn không thuộc ngách.');const sources=parent?sourcesFromBatch(parent):await capture(store,sourceIds),batch={id:uid(),rootId:root,channelId,name:String(name||'Bộ nhân bản').trim(),sources,projects:[],options:{mixHook:true,balance:true,...options},settings:structuredClone(store.get(channelId).draft),musicFolders:preferences(store,channelId).folders||{},inheritedHistory:allSignatures(store,root)};
  if(parent&&!parent.projects.length){batch.sourceBatchId=parent.id;batch.inputSourceIds=parent.sources.map(s=>s.id);}
- await generate(store,batch,target.name==='Kênh gốc'?state.name:target.name);store.pref('remix-settings:'+channelId,JSON.stringify({...preferences(store,channelId),options:batch.options}));return save(store,batch);
+ await generate(store,batch);store.pref('remix-settings:'+channelId,JSON.stringify({...preferences(store,channelId),options:batch.options}));return save(store,batch);
 }
-async function generate(store,batch,prefix,onlyId=null,incomingOnly=false){
+async function generate(store,batch,onlyId=null,incomingOnly=false){
  const sources=await analyzeSources(batch.sources,batch.options),plans=incomingOnly?sources.map(source=>({source,blocks:source.blocks})):mix(sources,{...batch.options,balance:false},uid(),[...allSignatures(store,batch.rootId),...(batch.inheritedHistory||[])]),e=await engine();
  const regenerated=new Set();
- const otherNames=store.db.prepare('SELECT summary FROM remix_batches WHERE channel_id=?').all(batch.channelId).flatMap(r=>(JSON.parse(r.summary).names||[]).map(n=>n.toLowerCase()));
- const taken=new Set([...otherNames,...store.history(batch.channelId).map(p=>p.name.toLowerCase()),...batch.projects.map(p=>p.name.toLowerCase())]);let num=0;
+ const workspace=store.get(batch.channelId);
+ const nextName=store.projectNameSequence(workspace,null,name=>name===workspace.draft.name&&(workspace.draft.hook.length||workspace.draft.body.length));
  for(const [i,p] of plans.entries()){
   const previous=batch.projects[i];if(previous&&(previous.locked||previous.installed||(onlyId&&previous.id!==onlyId)))continue;
-  let name=previous?.name;if(!name){do{name=prefix+'_'+(++num);}while(taken.has(name.toLowerCase()));taken.add(name.toLowerCase());}
+  const name=previous?.name||nextName().name;
   if(onlyId){
    const used=require('./remix-used.cjs')(store,batch.channelId,batch);
    for(const hash of require('./remix-allocation.cjs').others(batch,onlyId))used.add(hash);
@@ -125,8 +125,7 @@ async function appendSources(store,{id,stateId,sourceIds},savedSources=null,pare
  // block boundaries which cannot be reconstructed by reading their transitions.
  const version=batch.updated;
  const added={...batch,sources:incoming,projects:[]};
- const channel=store.get(batch.channelId);
- await generate(store,added,channel.channelName==='Kênh gốc'?channel.name:channel.channelName,null,true);
+ await generate(store,added,null,true);
  const fresh=new Set(added.projects.map(p=>p.id));
  batch.projects.push(...added.projects);
  batch.sources.push(...incoming);
@@ -197,7 +196,7 @@ async function updateFromSource(store,{id,stateId}){
  const result=await appendSources(store,{id,stateId,sourceIds:update.newSources.map(s=>s.id)},update.newSources,update.source.id);
  return result;
 }
-async function reroll(store,id,projectId){const b=get(store,id),p=b.projects.find(p=>p.id===projectId);if(!p||p.locked||p.installed)throw Error('Dự án đã khóa hoặc đã tạo CapCut.');const target=store.get(b.channelId);await generate(store,b,target.channelName==='Kênh gốc'?target.name:target.channelName,projectId);return save(store,b);}
+async function reroll(store,id,projectId){const b=get(store,id),p=b.projects.find(p=>p.id===projectId);if(!p||p.locked||p.installed)throw Error('Dự án đã khóa hoặc đã tạo CapCut.');await generate(store,b,projectId);return save(store,b);}
 function lock(store,id,projectId){
  const b=get(store,id),p=b.projects.find(p=>p.id===projectId);
  if(!p)throw Error('Không tìm thấy dự án.');

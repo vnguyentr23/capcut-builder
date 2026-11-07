@@ -43,12 +43,27 @@ class Store {
   }
   canNewDraft(s){return !!this.db.prepare("SELECT 1 FROM projects WHERE niche_id=? AND status='CREATED' AND (json_extract(snapshot,'$.draft.id')=? OR json_extract(snapshot,'$.projectId')=?) LIMIT 1").get(s.id,s.draft.id,s.draft.id);}
   requireCreatedDraft(s){if(!this.canNewDraft(s))throw Error('Hãy tạo dự án CapCut thành công trước khi tạo dự án mới.');}
-  nameDraft(s,exists=()=>false){
+  projectNameSequence(s, draftId=null, exists=()=>false){
     const channel=this.db.prepare('SELECT name FROM channels WHERE id=?').get(s.id)?.name||s.channelName||'Kênh gốc';
-    const base=fixName(channel+'_'+s.name).slice(0,85),rows=this.db.prepare('SELECT name,snapshot FROM projects WHERE niche_id=?').all(s.id);
-    const keys=new Set();for(const row of rows){const snap=JSON.parse(row.snapshot),id=snap.draft?.id||snap.projectId;if(id===s.draft.id)continue;keys.add(id||row.name.trim().replace(/[_\s]+/g,' ').toLocaleLowerCase());}
-    let number=keys.size+1,name=base+'_'+number;const names=new Set(rows.filter(r=>{const snap=JSON.parse(r.snapshot);return (snap.draft?.id||snap.projectId)!==s.draft.id;}).map(r=>r.name.toLocaleLowerCase()));
-    while(names.has(name.toLocaleLowerCase())||exists(name))name=base+'_'+(++number);
+    const base=fixName(channel+'_'+s.name).slice(0,85);
+    const keys=new Set(),names=new Set();
+    for(const row of this.db.prepare('SELECT name,snapshot FROM projects WHERE niche_id=?').all(s.id)){
+      const snap=JSON.parse(row.snapshot),id=snap.draft?.id||snap.projectId;
+      if(draftId&&id===draftId)continue;
+      keys.add(id||row.name.trim().replace(/[_\s]+/g,' ').toLocaleLowerCase());
+      names.add(row.name.toLocaleLowerCase());
+    }
+    for(const row of this.db.prepare('SELECT summary FROM remix_batches WHERE channel_id=?').all(s.id))
+      for(const name of JSON.parse(row.summary).names||[])names.add(name.toLocaleLowerCase());
+    let number=keys.size;
+    return ()=>{
+      let name;
+      do{name=base+'_'+(++number);}while(names.has(name.toLocaleLowerCase())||exists(name));
+      return {number,name};
+    };
+  }
+  nameDraft(s,exists=()=>false){
+    const {number,name}=this.projectNameSequence(s,s.draft.id,exists)();
     s.projectCounter=number;s.draft.projectNumber=number;s.draft.autoName=true;s.draft.nameLocked=true;s.draft.name=name;return name;
   }
   draftSnapshot(s,revision){return {draft:structuredClone(s.draft),sources:s.sources||{},libraryState:s.groups.map(g=>({id:g.id,items:g.items,pinned:g.pinned,order:g.order,sort:g.sort})),...(revision===undefined?{}:{bodyRevision:revision})};}

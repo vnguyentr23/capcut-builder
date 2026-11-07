@@ -56,6 +56,7 @@ test('Append sources remixes only pending projects, retains exported projects an
   const original={id:uid(),rootId:state.id,channelId:state.id,name:'Sources',sources:[fixture(dir,1),fixture(dir,2),fixture(dir,3)],projects:[],settings:defaults()};
   remix.save(store,original);
   const batch=await remix.create(store,{stateId:state.id,channelId:channel.id,sourceBatchId:original.id,name:'Batch'});
+  assert.deepEqual(batch.projects.map(p=>p.name),['Target_Append_1','Target_Append_2','Target_Append_3']);
   batch.projects[0].installed='exported';batch.projects[0].locked=true;batch.projects[1].locked=true;
   remix.save(store,batch);
   const previousBody=batch.projects.flatMap(require('../src/remix-allocation.cjs').bodyHashes),previousSources=structuredClone(batch.sources),locked=structuredClone(batch.projects[1]);
@@ -64,7 +65,7 @@ test('Append sources remixes only pending projects, retains exported projects an
   store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(source.id,state.id,source.name,'CREATED',folder,'now',JSON.stringify({timelineSnapshot:source.draft}));
   const result=await remix.appendSources(store,{id:batch.id,stateId:channel.id,sourceIds:[source.id]});
   assert.deepEqual(result.projects[1],locked);assert.deepEqual(result.sources.slice(0,previousSources.length),previousSources);const after=new Set(result.projects.flatMap(require('../src/remix-allocation.cjs').bodyHashes));assert(previousBody.every(hash=>after.has(hash)));
-  assert.equal(result.projects.length,4);assert.deepEqual(result.projects[0],installed);
+  assert.equal(result.projects[3].name,'Target_Append_4');assert.equal(result.projects.length,4);assert.deepEqual(result.projects[0],installed);
   assert.equal(result.projects[1].id,batch.projects[1].id);assert.equal(result.projects[1].name,batch.projects[1].name);
   const used=new Set(installed.blocks.flatMap(b=>b.clips.map(c=>c.fingerprint)));
   for(const p of result.projects.slice(1))for(const b of p.blocks.slice(1))for(const c of b.clips){assert(!used.has(c.fingerprint));used.add(c.fingerprint);}
