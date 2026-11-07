@@ -6,17 +6,22 @@ const transfer=require('./remix-transfer.cjs');
 const eligible=p=>!p.locked&&(!p.installed||p.mixUnlocked);
 const lineage=b=>[b.id,b.originPackageId].filter(Boolean);
 const norm=file=>path.resolve(file).replaceAll('\\','/').toLowerCase();
+function matchesFor(p,projects){
+ const byId=projects.filter(q=>lineage(p).some(key=>lineage(q).includes(key)));
+ if(byId.length)return byId;
+ return projects.filter(q=>p.name&&p.sourceName&&q.name===p.name&&q.sourceName===p.sourceName);
+}
 
 function preview(store,id,pkg,mappings){
  const batch=remix.get(store,id),old=pkg.body.batch;
  if(!old.projects.length)throw Error('Đây là bộ nguồn. Hãy chọn gói của bộ nhân bản trước khi cân bằng.');
- if(!lineage(batch).some(key=>lineage(old).includes(key)))throw Error('Gói này thuộc bộ nhân bản khác.');
  const proposed=new Map(),rows=[];
  for(const p of batch.projects.filter(eligible)){
   const row={name:p.name,before:p.draft.duration/1e6};rows.push(row);
-  let matches=old.projects.filter(q=>lineage(p).some(key=>lineage(q).includes(key)));
-  if(!matches.length)matches=old.projects.filter(q=>q.name===p.name&&q.sourceName===p.sourceName);
+  const matches=matchesFor(p,old.projects);
   if(matches.length!==1){row.reason='Không xác định duy nhất video tương ứng';continue;}
+  if(batch.projects.filter(other=>matchesFor(other,old.projects).includes(matches[0])).length!==1){row.reason='Một video trong gói khớp với nhiều dự án hiện tại';continue;}
+  row.sourceName=matches[0].name;
   const q=matches[0],required=[
    ...q.draft.materials.videos,...require('./sound-effects.cjs').resources(q.draft),...(q.assignments||[]),q.settings?.intro||old.renderSettings?.intro||old.settings?.intro
   ].filter(m=>m?.path);
@@ -64,4 +69,4 @@ function apply(store,plan){
  batch.projects=batch.projects.map(p=>plan.proposed.get(p.id)?.restored||p);
  remix.save(store,batch);return plan.proposed.size;
 }
-module.exports={preview,apply};
+module.exports={preview,apply,matchesFor};
