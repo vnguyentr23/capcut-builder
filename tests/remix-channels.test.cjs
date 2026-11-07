@@ -46,7 +46,7 @@ test('Reroll filters exported Body across batches, preserves Hook reuse and reta
   assert.deepEqual(result.projects[2],b.projects[2]);
   const analyzed=await remix.analyzeSources(source.sources),all=analyzed.flatMap(s=>s.blocks.flatMap(b=>b.units.map(u=>({fingerprint:u.identity}))));
   remix.save(store,{...source,id:uid(),channelId:ch.id,projects:[{id:uid(),name:'All',installed:'all-exported',blocks:[{clips:all}]}]});
-  const exhausted=await remix.reroll(store,b.id,target.id);assert(exhausted.projects[0].editor.blocks.slice(1).every(b=>b.units.every(u=>u.empty)));assert(exhausted.projects[0].blocks.slice(1).every(b=>b.clips.length===0));assert.equal(JSON.stringify(exhausted.projects[1]),before);
+  const snapshot=remix.get(store,b.id);await assert.rejects(remix.reroll(store,b.id,target.id),/Không đủ footage/);assert.deepEqual(remix.get(store,b.id),snapshot);
  }finally{store.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
 test('Append sources remixes only pending projects, retains exported projects and rejects repeated sources',async()=>{

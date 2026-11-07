@@ -25,21 +25,35 @@ function conflicts(store,batch,projects){
 }
 function reconcile(store,batch,sources=null,regenerated=new Set()){
  const edit=require('./remix-editor.cjs'),match=require('./blacklist.cjs').matcher(store),used=require('./remix-used.cjs')(store,batch.channelId,batch),changed=new Set(),cells=[],initialized=new Set();
- const exported=new Set(used),owners=new Map();
- for(const p of batch.projects.filter(p=>p.installed||(regenerated.size&&p.locked&&!regenerated.has(p.id))))for(const hash of bodyHashes(p)){used.add(hash);owners.set(hash,p.name);}
- for(const p of [...batch.projects].sort((a,b)=>Number(regenerated.has(a.id))-Number(regenerated.has(b.id)))){if(p.installed||(regenerated.size&&p.locked&&!regenerated.has(p.id)))continue;if(!p.editor)initialized.add(p);const e=edit.init(p),local=new Set();
-  for(let bi=0;bi<e.blocks.length;bi++)for(let slot=0;slot<e.blocks[bi].units.length;slot++){
-   let u=e.blocks[bi].units[slot];if(!u.empty){const reason=match(u)?'Footage bị chặn':bi>0&&used.has(u.fingerprint)?(owners.has(u.fingerprint)?'Footage đã có ở Body của '+owners.get(u.fingerprint):exported.has(u.fingerprint)?'Footage đã xuất ở kênh này':'Footage đã được chọn'):local.has(u.fingerprint)?'Footage trùng trong video':null;
-    if(reason){u=e.blocks[bi].units[slot]=empty(reason);changed.add(p);}else{local.add(u.fingerprint);if(bi>0){used.add(u.fingerprint);owners.set(u.fingerprint,p.name);}}}
-   if(u.empty)cells.push({p,bi,slot});
+ for(const p of batch.projects)for(const hash of bodyHashes(p).filter(Boolean))used.add(hash);
+ const assigned=new Set(require('./remix-used.cjs')(store,batch.channelId,batch));
+ for(const p of batch.projects)if(!regenerated.has(p.id))for(const hash of bodyHashes(p))assigned.add(hash);
+ for(const p of batch.projects){
+  if(p.installed||p.locked||(regenerated.size&&!regenerated.has(p.id)))continue;
+  if(!p.editor)initialized.add(p);
+  const e=edit.init(p);
+  const local=new Set();
+  for(const [bi,block] of e.blocks.entries())for(const [slot,u] of block.units.entries()){
+   if(!u.empty&&match(u)){
+    block.units[slot]={...empty('Footage bị chặn'),removedFootage:structuredClone(u)};
+    changed.add(p);
+   }
+   else if(regenerated.has(p.id)&&!u.empty&&((bi>0&&assigned.has(u.fingerprint))||local.has(u.fingerprint))){
+    cells.push({p,bi,slot,required:true});
+   }else if(!u.empty){
+    local.add(u.fingerprint);
+    if(bi>0)assigned.add(u.fingerprint);
+   }
+   if(block.units[slot].empty&&block.units[slot].reason==='Footage bị chặn')cells.push({p,bi,slot});
   }
  }
  // Existing clean footage stays in place. Only unused same-slot source footage can fill gaps.
- if(sources)for(const {p,bi,slot} of cells){const local=new Set(p.editor.blocks.flatMap(b=>b.units.map(u=>u.fingerprint)));let choice;
+ if(sources)for(const {p,bi,slot,required} of cells){const local=new Set(p.editor.blocks.flatMap(b=>b.units.map(u=>u.fingerprint)));let choice;
   for(const source of sources){for(let index=bi===0?0:Math.max(1,bi-1);index<=(bi===0?0:bi+1);index++){const u=source.blocks[index]?.units[slot];if(u&&!match(u)&&!local.has(u.identity)&&(bi===0||!used.has(u.identity))){choice={source,u};break;}}if(choice)break;}
+  if(required&&!choice)throw Error(p.name+': Không đủ footage hợp lệ để trộn. Bản nháp được giữ nguyên.');
   if(choice){p.editor.blocks[bi].units[slot]=edit.pack(choice.source.draft,choice.u.segments,choice.u.identity,choice.u.name);if(bi>0)used.add(choice.u.identity);changed.add(p);}
  }
- for(const p of changed){p.editor.revision++;p.editUndo=[];edit.rebuild(p);}
+ for(const p of changed){p.editor.revision++;edit.rebuild(p);}
  for(const p of initialized)if(!changed.has(p))delete p.editor;
  return changed.size;
 }
