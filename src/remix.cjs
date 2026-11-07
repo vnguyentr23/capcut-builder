@@ -89,8 +89,8 @@ async function create(store,{stateId,sourceIds,channelId,name,sourceBatchId,opti
  if(parent&&!parent.projects.length){batch.sourceBatchId=parent.id;batch.inputSourceIds=parent.sources.map(s=>s.id);}
  await generate(store,batch,target.name==='Kênh gốc'?state.name:target.name);store.pref('remix-settings:'+channelId,JSON.stringify({...preferences(store,channelId),options:batch.options}));return save(store,batch);
 }
-async function generate(store,batch,prefix,onlyId=null,updating=false){
- const sources=await analyzeSources(batch.sources,batch.options),plans=mix(sources,{...batch.options,balance:false},uid(),[...allSignatures(store,batch.rootId),...(batch.inheritedHistory||[])]),e=await engine();
+async function generate(store,batch,prefix,onlyId=null,incomingOnly=false){
+ const sources=await analyzeSources(batch.sources,batch.options),plans=incomingOnly?sources.map(source=>({source,blocks:source.blocks})):mix(sources,{...batch.options,balance:false},uid(),[...allSignatures(store,batch.rootId),...(batch.inheritedHistory||[])]),e=await engine();
  const regenerated=new Set();
  const otherNames=store.db.prepare('SELECT summary FROM remix_batches WHERE channel_id=?').all(batch.channelId).flatMap(r=>(JSON.parse(r.summary).names||[]).map(n=>n.toLowerCase()));
  const taken=new Set([...otherNames,...store.history(batch.channelId).map(p=>p.name.toLowerCase()),...batch.projects.map(p=>p.name.toLowerCase())]);let num=0;
@@ -103,6 +103,7 @@ async function generate(store,batch,prefix,onlyId=null,updating=false){
   batch.projects[i]={id:previous?.id||uid(),name,locked:false,draft:result.draft,ledger:result.ledger,signature:p.signature,blocks,assignments:[],sourceName:p.source.name,sourceId:p.source.sourceId,sourceBodyHashes:[...bodyOriginal],reusedPercent:Math.round(100*body.filter(u=>bodyOriginal.has(u.identity)).length/Math.max(1,body.length)),installed:null,...(previous?.settings||batch.renderSettings?{settings:structuredClone(previous?.settings||batch.renderSettings)}:{})};
   regenerated.add(batch.projects[i].id);
  }
+ if(incomingOnly)return batch;
  require('./remix-allocation.cjs').reconcile(store,batch,sources,regenerated);for(const p of batch.projects){if(!regenerated.has(p.id)||p.installed)continue;const setting=p.settings||batch.renderSettings;if(setting?.reblockEnabled)require('./remix-editor.cjs').reblock(p,setting.blockSize);}if(!onlyId&&(batch.balanceOptions?.enabled??batch.options.durationBalance??true)){batch.balanceReport=await require('./remix-balance.cjs').balance(batch,batch.balanceOptions||{target:batch.options.durationTarget??30,keepPosition:batch.options.keepPosition??true,mixHook:false},sources);}return batch;
 }
 async function appendSources(store,{id,stateId,sourceIds},savedSources=null,parentSourceId=null){
@@ -115,21 +116,86 @@ async function appendSources(store,{id,stateId,sourceIds},savedSources=null,pare
  const addedIds=[...new Set(sourceIds)].filter(id=>!previousIds.has(id));
  if(!addedIds.length)throw Error('Các video được chọn đã có trong bộ.');
  const incoming=savedSources?structuredClone(savedSources.filter(s=>addedIds.includes(s.id))):await capture(store,addedIds);
- const pending=batch.projects.filter(p=>!p.installed);
- const snapshots=sourcesFromBatch({...batch,projects:pending});
- const working={...batch,sources:[...snapshots,...incoming],projects:pending.map(p=>({...p,locked:false}))};
+ // Build only incoming timelines. Existing drafts can have cuts, empty slots and
+ // block boundaries which cannot be reconstructed by reading their transitions.
+ const version=batch.updated;
+ const added={...batch,sources:incoming,projects:[]};
  const channel=store.get(batch.channelId);
- await generate(store,working,channel.channelName==='Kênh gốc'?channel.name:channel.channelName,null,true);
- // Persist the whole update once, only after every pending project succeeds.
- const replacements=new Map(working.projects.slice(0,pending.length).map(p=>[p.id,p]));
- const oldSources=new Map(batch.projects.map((p,i)=>[p.id,batch.sources[i]]));
- const newSources=new Map(pending.map((p,i)=>[p.id,snapshots[i]]));
- batch.sources=batch.projects.map(p=>p.installed?oldSources.get(p.id):newSources.get(p.id)).concat(incoming);
- if(batch.sources.some(s=>!s))throw Error('Bộ thiếu bản nguồn tương ứng. Chưa lưu thay đổi.');
- batch.projects=batch.projects.map(p=>replacements.get(p.id)||p).concat(working.projects.slice(pending.length));
+ await generate(store,added,channel.channelName==='Kênh gốc'?channel.name:channel.channelName,null,true);
+ const fresh=new Set(added.projects.map(p=>p.id));
+ batch.projects.push(...added.projects);
+ batch.sources.push(...incoming);
+ const sources=await analyzeSources(batch.sources,batch.options);
+ const allocation=require('./remix-allocation.cjs'),edit=require('./remix-editor.cjs');
+ const previousBody=batch.projects.filter(p=>!fresh.has(p.id)).flatMap(allocation.bodyHashes);
+ allocation.reconcile(store,batch,sources,fresh);
+ for(const p of added.projects){const setting=p.settings||batch.renderSettings;if(setting?.reblockEnabled)edit.reblock(p,setting.blockSize);}
+ mixAddedUnits(batch,fresh,sources);
+ if(batch.balanceOptions?.enabled??batch.options?.durationBalance??true){
+  await require('./remix-balance.cjs').balance(batch,batch.balanceOptions||{target:batch.options?.durationTarget??30,keepPosition:batch.options?.keepPosition??true},sources);
+ }
+ const bodyAfter=new Set(batch.projects.flatMap(allocation.bodyHashes));
+ if(previousBody.some(hash=>hash&&!bodyAfter.has(hash)))throw Error('Cập nhật sẽ làm mất footage Body đang có. Bộ cũ được giữ nguyên.');
  batch.inputSourceIds=[...new Set([...previousIds,...addedIds])];
  if(parentSourceId)batch.sourceBatchId=parentSourceId;
+ if(get(store,id).updated!==version)throw Error('Bộ đã thay đổi. Hãy mở lại trước khi cập nhật.');
  return save(store,batch);
+}
+function mixAddedUnits(batch,fresh,sources){
+ const edit=require('./remix-editor.cjs');
+ const editable=batch.projects.filter(p=>!p.installed&&!p.locked);
+ const origins=new Map();
+ for(const source of sources)for(const [bi,b] of source.blocks.entries())for(const [slot,u] of b.units.entries()){
+  if(!origins.has(u.identity))origins.set(u.identity,[]);
+  origins.get(u.identity).push({bi,slot});
+ }
+ const changed=new Set();
+ const cells=editable.flatMap(p=>edit.init(p).blocks.flatMap((b,bi)=>b.units.map((u,slot)=>({p,b,bi,slot,u}))));
+ const occupied=p=>new Set(p.editor.blocks.flatMap(b=>b.units.map(u=>u.fingerprint)));
+ const legal=(cell,dest)=>(origins.get(cell.u.fingerprint)||[{bi:cell.bi,slot:cell.slot}]).some(x=>x.slot===dest.slot&&Math.abs(x.bi-dest.bi)<=1);
+ const taken=new Set();
+ for(const a of cells.filter(c=>fresh.has(c.p.id)&&!c.u.empty)){
+  if(!a.bi&&!batch.options?.mixHook)continue;
+  const options=cells.filter(b=>!fresh.has(b.p.id)&&!taken.has(b)&&!b.u.empty&&a.slot===b.slot&&Boolean(a.bi)===Boolean(b.bi)&&legal(a,b)&&legal(b,a)&&!occupied(a.p).has(b.u.fingerprint)&&!occupied(b.p).has(a.u.fingerprint));
+  if(!options.length)continue;
+  const b=options[crypto.randomInt(options.length)];taken.add(b);
+  a.b.units[a.slot]=b.u;b.b.units[b.slot]=a.u;changed.add(a.p);changed.add(b.p);
+ }
+ for(const p of changed){p.assignments=[];p.editUndo=[];p.editor.revision++;edit.rebuild(p);p.editedAt=new Date().toISOString();}
+}
+async function fillSourceGaps(store,id){
+ const batch=get(store,id),version=batch.updated;
+ const parent=sourceUpdate(store,batch)?.source;
+ if(!parent)throw Error('Không tìm thấy bộ nguồn gốc để khôi phục vị trí trống.');
+ const sources=await analyzeSources(parent.sources,batch.options);
+ const edit=require('./remix-editor.cjs'),allocation=require('./remix-allocation.cjs');
+ const blocked=require('./blacklist.cjs').matcher(store);
+ const used=require('./remix-used.cjs')(store,batch.channelId);
+ for(const p of batch.projects)for(const hash of allocation.bodyHashes(p))used.add(hash);
+ let restored=0,remaining=0;
+ for(const p of batch.projects){
+  if(p.installed||p.locked||!p.editor)continue;
+  const local=new Set(p.editor.blocks.flatMap(b=>b.units.map(u=>u.fingerprint)));
+  let changed=false;
+  for(const [bi,b] of p.editor.blocks.entries())for(const [slot,unit] of b.units.entries()){
+   if(!unit.empty)continue;
+   let selected;
+   for(const source of sources){
+    for(let n=bi?Math.max(1,bi-1):0;n<=(bi?bi+1:0);n++){
+     const candidate=source.blocks[n]?.units[slot];
+     if(candidate&&!blocked(candidate)&&!local.has(candidate.identity)&&(!bi||!used.has(candidate.identity))){selected={source,candidate};break;}
+    }
+    if(selected)break;
+   }
+   if(!selected){remaining++;continue;}
+   const {source,candidate}=selected;
+   b.units[slot]=edit.pack(source.draft,candidate.segments,candidate.identity,candidate.name);
+   local.add(candidate.identity);if(bi)used.add(candidate.identity);changed=true;restored++;
+  }
+  if(changed){p.editor.revision++;p.editUndo=[];edit.rebuild(p);}
+ }
+ if(restored){if(get(store,id).updated!==version)throw Error('Bộ đã thay đổi. Hãy mở lại.');save(store,batch);}
+ return {restored,remaining};
 }
 async function addToSource(store,{id,stateId,sourceIds}){
  const batch=get(store,id),root=store.get(stateId).rootNicheId||stateId;
@@ -242,4 +308,4 @@ function removeBatch(store,{id,stateId}){
  }catch(e){store.db.exec('ROLLBACK');throw e;}
  return true;
 }
-module.exports={reuseStats,refreshReuse,addToSource,sourceUpdate,updateFromSource,appendSources,mediaPath,musicPreview,prepare,removeBatch,present,saveSource,sourcesFromBatch,preferences,list,get,save,sourceProjects,analyzeSources,mix,capture,create,reroll,lock,assignMusic,withMusic,check,install,allSignatures};
+module.exports={fillSourceGaps,reuseStats,refreshReuse,addToSource,sourceUpdate,updateFromSource,appendSources,mediaPath,musicPreview,prepare,removeBatch,present,saveSource,sourcesFromBatch,preferences,list,get,save,sourceProjects,analyzeSources,mix,capture,create,reroll,lock,assignMusic,withMusic,check,install,allSignatures};

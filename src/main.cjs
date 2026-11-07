@@ -40,6 +40,7 @@ app.whenReady().then(async()=>{
   let pendingRemixImport=null;
   const sfxChannel=p=>p.batchId?remix.get(store,p.batchId).channelId:p.stateId||current;
   const routes={
+    remixFillSourceGaps:async(id)=>remix.fillSourceGaps(store,id),
     remixBalancePreview:async(p)=>require('./remix-balance.cjs').preview(store,p),
     remixBalanceApply:async(p)=>require('./remix-balance.cjs').apply(store,p),
     sfxFolder:async(p={})=>{const key='sound-effects-folder:'+sfxChannel(p);if(p.choose){const r=await dialog.showOpenDialog(win,{title:'Thư mục sound effect',properties:['openDirectory']});if(!r.canceled)store.pref(key,r.filePaths[0]);}return store.pref(key)||'';},

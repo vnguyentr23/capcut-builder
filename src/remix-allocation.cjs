@@ -5,11 +5,12 @@ function bodyHashes(p){return p.editor?p.editor.blocks.slice(1).flatMap(b=>b.uni
 function others(batch,id){return new Set(batch.projects.filter(p=>p.id!==id).flatMap(bodyHashes).filter(Boolean));}
 function reconcile(store,batch,sources=null,regenerated=new Set()){
  const edit=require('./remix-editor.cjs'),match=require('./blacklist.cjs').matcher(store),used=require('./remix-used.cjs')(store,batch.channelId),changed=new Set(),cells=[],initialized=new Set();
- for(const p of batch.projects.filter(p=>p.installed))for(const hash of bodyHashes(p))used.add(hash);
- for(const p of [...batch.projects].sort((a,b)=>Number(regenerated.has(a.id))-Number(regenerated.has(b.id)))){if(p.installed)continue;if(!p.editor)initialized.add(p);const e=edit.init(p),local=new Set();
+ const exported=new Set(used),owners=new Map();
+ for(const p of batch.projects.filter(p=>p.installed||(regenerated.size&&p.locked&&!regenerated.has(p.id))))for(const hash of bodyHashes(p)){used.add(hash);owners.set(hash,p.name);}
+ for(const p of [...batch.projects].sort((a,b)=>Number(regenerated.has(a.id))-Number(regenerated.has(b.id)))){if(p.installed||(regenerated.size&&p.locked&&!regenerated.has(p.id)))continue;if(!p.editor)initialized.add(p);const e=edit.init(p),local=new Set();
   for(let bi=0;bi<e.blocks.length;bi++)for(let slot=0;slot<e.blocks[bi].units.length;slot++){
-   let u=e.blocks[bi].units[slot];if(!u.empty){const reason=match(u)?'Footage bị chặn':bi>0&&used.has(u.fingerprint)?'Footage đã dùng trong bộ hoặc đã xuất':local.has(u.fingerprint)?'Footage trùng trong video':null;
-    if(reason){u=e.blocks[bi].units[slot]=empty(reason);changed.add(p);}else{local.add(u.fingerprint);if(bi>0)used.add(u.fingerprint);}}
+   let u=e.blocks[bi].units[slot];if(!u.empty){const reason=match(u)?'Footage bị chặn':bi>0&&used.has(u.fingerprint)?(owners.has(u.fingerprint)?'Footage đã có ở Body của '+owners.get(u.fingerprint):exported.has(u.fingerprint)?'Footage đã xuất ở kênh này':'Footage đã được chọn'):local.has(u.fingerprint)?'Footage trùng trong video':null;
+    if(reason){u=e.blocks[bi].units[slot]=empty(reason);changed.add(p);}else{local.add(u.fingerprint);if(bi>0){used.add(u.fingerprint);owners.set(u.fingerprint,p.name);}}}
    if(u.empty)cells.push({p,bi,slot});
   }
  }

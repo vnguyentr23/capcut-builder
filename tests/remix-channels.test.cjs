@@ -58,10 +58,12 @@ test('Append sources remixes only pending projects, retains exported projects an
   const batch=await remix.create(store,{stateId:state.id,channelId:channel.id,sourceBatchId:original.id,name:'Batch'});
   batch.projects[0].installed='exported';batch.projects[0].locked=true;batch.projects[1].locked=true;
   remix.save(store,batch);
+  const previousBody=batch.projects.flatMap(require('../src/remix-allocation.cjs').bodyHashes),previousSources=structuredClone(batch.sources),locked=structuredClone(batch.projects[1]);
   const installed=structuredClone(batch.projects[0]),source=fixture(dir,4),folder=path.join(dir,'new-source');
   fs.mkdirSync(folder);fs.writeFileSync(path.join(folder,'draft_content.json'),JSON.stringify(source.draft));fs.writeFileSync(path.join(folder,'draft_meta_info.json'),'{}');
   store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(source.id,state.id,source.name,'CREATED',folder,'now',JSON.stringify({timelineSnapshot:source.draft}));
   const result=await remix.appendSources(store,{id:batch.id,stateId:channel.id,sourceIds:[source.id]});
+  assert.deepEqual(result.projects[1],locked);assert.deepEqual(result.sources.slice(0,previousSources.length),previousSources);const after=new Set(result.projects.flatMap(require('../src/remix-allocation.cjs').bodyHashes));assert(previousBody.every(hash=>after.has(hash)));
   assert.equal(result.projects.length,4);assert.deepEqual(result.projects[0],installed);
   assert.equal(result.projects[1].id,batch.projects[1].id);assert.equal(result.projects[1].name,batch.projects[1].name);
   const used=new Set(installed.blocks.flatMap(b=>b.clips.map(c=>c.fingerprint)));
@@ -92,6 +94,10 @@ test('Source collections grow once and each channel consumes saved additions ind
   assert.equal(remix.sourceUpdate(store,first).newSources.length,1);assert.equal(remix.sourceUpdate(store,second).newSources.length,1);
   fs.rmSync(folder,{recursive:true,force:true});
   const result=await remix.updateFromSource(store,{id:first.id,stateId:a.id});
+  const editor=require('../src/remix-editor.cjs'),alloc=require('../src/remix-allocation.cjs');
+  const repairTarget=result.projects[0],e=editor.init(repairTarget),originalLength=repairTarget.draft.duration;
+  e.blocks[1].units[0]=alloc.empty('Test');editor.rebuild(repairTarget);remix.save(store,result);
+  const repaired=await remix.fillSourceGaps(store,result.id);assert.equal(repaired.restored,1);assert.equal(repaired.remaining,0);assert.equal(remix.get(store,result.id).projects[0].draft.duration,originalLength);
   assert.equal(result.projects.length,3);assert.equal(remix.sourceUpdate(store,result).newSources.length,0);
   assert.equal(remix.sourceUpdate(store,remix.get(store,second.id)).newSources.length,1);
   await assert.rejects(remix.updateFromSource(store,{id:first.id,stateId:a.id}),/Không có video nguồn mới/);
