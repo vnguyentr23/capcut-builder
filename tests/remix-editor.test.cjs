@@ -23,6 +23,15 @@ test('Create CapCut for selected draft only, retain native audio refs and leave 
   const again=await remix.install(store,b.id,{detect:async()=>({compatible:true,destination:root,existingNames:[p.name]})},()=>{},p.id);
   assert.equal(again.projects.length,count);assert.equal(again.projects[0].id,p.id);assert.notEqual(again.projects[0].installed,firstPath);assert.equal(fs.readFileSync(path.join(firstPath,'draft_content.json'),'utf8'),first);
   const repeated=JSON.parse(fs.readFileSync(path.join(again.projects[0].installed,'draft_content.json')));assert.equal(repeated.name,p.name+' - xuất lại 2');assert.equal(repeated.duration,d.duration);const geometry=x=>x.tracks.find(t=>t.type==='video').segments.map(s=>({source:s.source_timerange,target:s.target_timerange,volume:s.volume,clip:s.clip,material:s.material_id}));assert.deepEqual(geometry(repeated),geometry(d));
+  const reopened=remix.lock(store,b.id,p.id),target=reopened.projects[0],e=edit.init(target),expected=edit.summary(e.blocks[1].units[0]);
+  e.blocks[1].units[0]=require('../src/remix-allocation.cjs').empty('Missing');edit.rebuild(target);remix.save(store,reopened);
+  const recovery=require('../src/remix-history-recovery.cjs');
+  const preview=recovery.recover(store,{id:b.id});assert.equal(preview.projects[0].history.length,2);assert.equal(preview.rows.filter(row=>row.clip).length,1,JSON.stringify(preview.rows));assert.equal(preview.rows.find(row=>row.clip).clip,expected.name);
+  assert(remix.get(store,b.id).projects[0].editor.blocks[1].units[0].empty);
+  assert.throws(()=>recovery.recover(store,{id:b.id,apply:true,updated:'old'}),/thay đổi/);
+  recovery.recover(store,{id:b.id,choices:{[p.id]:preview.projects[0].history[1].id},apply:true,updated:preview.updated});
+  const restored=edit.summary(remix.get(store,b.id).projects[0].editor.blocks[1].units[0]);assert.equal(restored.fingerprint,expected.fingerprint);assert.deepEqual(restored.parts,expected.parts);
+
 
  }finally{writer.isRunning=running;store.close();fs.rmSync(dir,{recursive:true,force:true});}
 });

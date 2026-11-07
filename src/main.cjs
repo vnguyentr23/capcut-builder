@@ -40,6 +40,7 @@ app.whenReady().then(async()=>{
   let pendingRemixImport=null;
   const sfxChannel=p=>p.batchId?remix.get(store,p.batchId).channelId:p.stateId||current;
   const routes={
+    remixHistoryRecovery:async(args)=>require('./remix-history-recovery.cjs').recover(store,args),
     remixFillSourceGaps:async(id)=>remix.fillSourceGaps(store,id),
     remixBalancePreview:async(p)=>require('./remix-balance.cjs').preview(store,p),
     remixBalanceApply:async(p)=>require('./remix-balance.cjs').apply(store,p),
