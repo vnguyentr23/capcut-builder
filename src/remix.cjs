@@ -16,7 +16,7 @@ function musicPreview(store,id,projectId){const b=readCached(store,id),p=b.proje
 function save(store,b){batchReadCache.get(store)?.delete(b.id);b.updated=new Date().toISOString();const summary={count:b.projects.length,sourceCount:b.sources.length,created:b.projects.filter(p=>p.installed).length,names:b.projects.map(p=>p.name),sourceBatchId:b.sourceBatchId||null,inputSourceIds:b.inputSourceIds||b.sources.map(s=>s.id),sourceIds:b.sources.map(s=>s.id),signatures:[...new Set([...(b.inheritedHistory||[]),...b.projects.map(p=>p.signature)])]};store.db.prepare('INSERT INTO remix_batches(id,root_id,channel_id,name,data,updated,summary) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated=excluded.updated,name=excluded.name,summary=excluded.summary').run(b.id,b.rootId,b.channelId,b.name,JSON.stringify(b),b.updated,JSON.stringify(summary));return b;}
 function reuseStats(p){const body=p.editor?p.editor.blocks.slice(1).flatMap(b=>b.units).filter(u=>!u.empty).map(u=>u.fingerprint):p.blocks.slice(1).flatMap(b=>b.clips).map(c=>c.fingerprint);if(!Array.isArray(p.sourceBodyHashes))return {reusedPercent:null,reusedCount:null,bodyCount:body.length};const source=new Set(p.sourceBodyHashes),count=body.filter(h=>h&&source.has(h)).length;return {reusedPercent:body.length?Math.round(count*100/body.length):0,reusedCount:count,bodyCount:body.length};}
 async function refreshReuse(store,b){if(!b.projects.some(p=>!Array.isArray(p.sourceBodyHashes)))return;const sources=await analyzeSources(b.sources,b.options);let changed=false;for(const p of b.projects){const matches=sources.filter(s=>p.sourceId?s.sourceId===p.sourceId:s.name===p.sourceName);if(matches.length!==1)continue;p.sourceId=matches[0].sourceId;p.sourceBodyHashes=[...new Set(matches[0].blocks.slice(1).flatMap(b=>b.units.map(u=>u.identity)))];Object.assign(p,reuseStats(p));changed=true;}if(changed)save(store,b);}
-function present(b){return {...b,sources:b.sources.map(s=>({id:s.id,name:s.name})),projects:b.projects.map(p=>({id:p.id,name:p.name,locked:p.locked,installed:p.installed,editedAt:p.editedAt,sourceName:p.sourceName,signature:p.signature,...reuseStats(p),blocks:p.blocks,assignments:p.assignments,draft:{duration:p.draft.duration}})),assetManifest:!!b.assetManifest};}
+function present(b){return {...b,sources:b.sources.map(s=>({id:s.id,name:s.name})),projects:b.projects.map(p=>({id:p.id,name:p.name,locked:p.locked,mixUnlocked:!!p.mixUnlocked,installed:p.installed,editedAt:p.editedAt,sourceName:p.sourceName,signature:p.signature,...reuseStats(p),blocks:p.blocks,assignments:p.assignments,draft:{duration:p.draft.duration}})),assetManifest:!!b.assetManifest};}
 function sourceProjects(store,id){
  const root=store.get(id).rootNicheId||id;
  const latest=new Map();
@@ -143,7 +143,7 @@ async function appendSources(store,{id,stateId,sourceIds},savedSources=null,pare
 }
 function mixAddedUnits(batch,fresh,sources){
  const edit=require('./remix-editor.cjs');
- const editable=batch.projects.filter(p=>!p.installed&&!p.locked);
+ const editable=batch.projects.filter(p=>!p.locked&&(!p.installed||p.mixUnlocked));
  const origins=new Map();
  for(const source of sources)for(const [bi,b] of source.blocks.entries())for(const [slot,u] of b.units.entries()){
   if(!origins.has(u.identity))origins.set(u.identity,[]);
@@ -229,11 +229,24 @@ async function updateFromSource(store,{id,stateId}){
  return result;
 }
 async function reroll(store,id,projectId){const b=get(store,id),p=b.projects.find(p=>p.id===projectId);if(!p||p.locked||p.installed)throw Error('Dự án đã khóa hoặc đã tạo CapCut.');const target=store.get(b.channelId);await generate(store,b,target.channelName==='Kênh gốc'?target.name:target.channelName,projectId);return save(store,b);}
-function lock(store,id,projectId){const b=get(store,id),p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy dự án.');p.locked=!p.locked;return save(store,b);}
+function lock(store,id,projectId){
+ const b=get(store,id),p=b.projects.find(p=>p.id===projectId);
+ if(!p)throw Error('Không tìm thấy dự án.');
+ if(p.installed){
+  p.mixUnlocked=!(p.mixUnlocked&&!p.locked);
+  p.locked=!p.mixUnlocked;
+  if(p.mixUnlocked){
+   const rows=store.db.prepare(`SELECT id FROM projects WHERE niche_id=? AND status='REMIX_CREATED' AND
+    (path=? OR (json_extract(snapshot,'$.remixBatchId')=? AND json_extract(snapshot,'$.remixProjectId')=?))`).all(b.channelId,p.installed,b.id,p.id);
+   b.reopenedExports=[...new Set([...(b.reopenedExports||[]),...rows.map(row=>row.id)])];
+  }
+ }else p.locked=!p.locked;
+ return save(store,b);
+}
 async function assignMusic(store,id,folders,progress=()=>{},projectId=null){
  const b=get(store,id),lib=require('./media.cjs'),pools={};
  for(const kind of ['hook','body']){if(!folders[kind])throw Error('Chọn thư mục nhạc '+kind);pools[kind]=(await lib.scan(folders[kind],'audio',store,progress)).filter(m=>!m.error&&m.duration>0);}
- for(const p of b.projects.filter(p=>(projectId?p.id===projectId:(!p.installed&&(!p.locked||!p.assignments.length))))){
+ for(const p of b.projects.filter(p=>(projectId?p.id===projectId:((!p.installed||p.mixUnlocked)&&(!p.locked||!p.assignments.length))))){
   const timing=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);const slots=p.blocks.map(block=>{const delay=block.hook?Math.min(timing.hookDelay*1e6,block.duration):0;return {block,duration:block.duration-delay,start:block.start+delay};}).filter(s=>s.duration>0);
   const candidates=new Map(slots.map(s=>[s.block.index,[...new Map(pools[s.block.hook?'hook':'body'].filter(m=>Math.round(m.duration*1e6)>=s.duration).map(m=>[m.fingerprint,m])).values()].map(m=>({m,rank:crypto.randomInt(2147483647)})).sort((a,b)=>a.rank-b.rank).map(x=>x.m)]));
   const owners=new Map(),chosen=new Map();
@@ -292,7 +305,7 @@ async function install(store,id,adapter,progress=()=>{},projectId=null){
   draft.name=exportName;
   const manifest={name:exportName,remixBatchId:b.id,remixProjectId:p.id,draft:{...defaults(),name:exportName},clips:p.blocks.flatMap(bl=>bl.clips.map(c=>({...c,role:bl.hook?'hook':'body'})))};
   const result=await writer.install(manifest,detected.destination,[],writer.isRunning,draft);
-  p.installed=result.path;p.locked=true;names.add(exportName.toLowerCase());
+  p.installed=result.path;p.locked=true;p.mixUnlocked=false;names.add(exportName.toLowerCase());
   store.db.exec('BEGIN IMMEDIATE');try{const projectId=uid();store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(projectId,b.channelId,p.name,'REMIX_CREATED',result.path,new Date().toISOString(),JSON.stringify({...manifest,timelineSnapshot:result.timelineSnapshot||draft}));store.reserve(b.channelId,manifest.draft.id,manifest);for(const c of manifest.clips)store.db.prepare('INSERT OR IGNORE INTO usage VALUES(?,?,?,?)').run(b.channelId,c.fingerprint,projectId,c.role);save(store,b);store.db.exec('COMMIT');}catch(err){store.db.exec('ROLLBACK');throw Error('CapCut đã tạo '+p.name+' nhưng lưu lịch sử thất bại: '+err.message);}
   progress({done:index+1,total:b.projects.length,file:p.name});
  }

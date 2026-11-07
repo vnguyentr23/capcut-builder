@@ -4,7 +4,7 @@ function empty(reason){return {id:uid(),empty:true,reason,name:'Vị trí trốn
 function bodyHashes(p){return p.editor?p.editor.blocks.slice(1).flatMap(b=>b.units.filter(u=>!u.empty).map(u=>u.fingerprint)):p.blocks.filter(b=>!b.hook).flatMap(b=>b.clips.map(c=>c.fingerprint));}
 function others(batch,id){return new Set(batch.projects.filter(p=>p.id!==id).flatMap(bodyHashes).filter(Boolean));}
 function reconcile(store,batch,sources=null,regenerated=new Set()){
- const edit=require('./remix-editor.cjs'),match=require('./blacklist.cjs').matcher(store),used=require('./remix-used.cjs')(store,batch.channelId),changed=new Set(),cells=[],initialized=new Set();
+ const edit=require('./remix-editor.cjs'),match=require('./blacklist.cjs').matcher(store),used=require('./remix-used.cjs')(store,batch.channelId,batch),changed=new Set(),cells=[],initialized=new Set();
  const exported=new Set(used),owners=new Map();
  for(const p of batch.projects.filter(p=>p.installed||(regenerated.size&&p.locked&&!regenerated.has(p.id))))for(const hash of bodyHashes(p)){used.add(hash);owners.set(hash,p.name);}
  for(const p of [...batch.projects].sort((a,b)=>Number(regenerated.has(a.id))-Number(regenerated.has(b.id)))){if(p.installed||(regenerated.size&&p.locked&&!regenerated.has(p.id)))continue;if(!p.editor)initialized.add(p);const e=edit.init(p),local=new Set();

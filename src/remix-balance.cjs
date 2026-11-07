@@ -6,7 +6,7 @@ const length=u=>u.empty?0:u.segments.reduce((n,s)=>n+s.target_timerange.duration
 const total=p=>p.editor.blocks.reduce((n,b)=>n+b.units.reduce((n,u)=>n+length(u),0),0)+(p.editor.ending?length(p.editor.ending):0)+(p.settings?.intro?.duration||0);
 const spread=values=>values.length?Math.max(...values)-Math.min(...values):0;
 async function balance(batch,value={},sources=[]){
- const o=options(value),original=batch.projects,projects=original.filter(p=>!p.installed&&!p.locked).map(p=>clone(p)),origins=new Map();
+ const o=options(value),original=batch.projects,projects=original.filter(p=>!p.locked&&(!p.installed||p.mixUnlocked)).map(p=>clone(p)),origins=new Map();
  for(const s of sources)for(const [bi,b]of s.blocks.entries())for(const [slot,u]of b.units.entries()){const key=u.identity||u.fingerprint;if(!origins.has(key))origins.set(key,[]);origins.get(key).push({block:bi,slot});}
  for(const p of projects){edit().init(p);p.settings??=require('./remix-settings.cjs').effective(p,batch.renderSettings||batch.settings);for(const [bi,b]of p.editor.blocks.entries())for(const [slot,u]of b.units.entries())if(bi>0||o.mixHook)u.balanceOrigins??=clone(origins.get(u.fingerprint)||[{block:bi,slot}]);}
  const before=projects.map(total),times=[...before],initial=projects.map(p=>JSON.stringify(p.editor.blocks.map(b=>b.units.map(u=>u.id))));let swaps=0,moves=0,limited=false;const deadline=Date.now()+5000;
