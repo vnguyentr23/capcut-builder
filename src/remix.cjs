@@ -170,11 +170,11 @@ async function fillSourceGaps(store,id){
  const sources=await analyzeSources(parent.sources,batch.options);
  const edit=require('./remix-editor.cjs'),allocation=require('./remix-allocation.cjs');
  const blocked=require('./blacklist.cjs').matcher(store);
- const used=require('./remix-used.cjs')(store,batch.channelId);
+ const used=require('./remix-used.cjs')(store,batch.channelId,batch);
  for(const p of batch.projects)for(const hash of allocation.bodyHashes(p))used.add(hash);
  let restored=0,remaining=0;
  for(const p of batch.projects){
-  if(p.installed||p.locked||!p.editor)continue;
+  if(p.locked || (p.installed && !p.mixUnlocked) || !p.editor)continue;
   const local=new Set(p.editor.blocks.flatMap(b=>b.units.map(u=>u.fingerprint)));
   let changed=false;
   for(const [bi,b] of p.editor.blocks.entries())for(const [slot,unit] of b.units.entries()){
