@@ -25,3 +25,30 @@ test('Explicitly reopening one export enables balancing without losing transferr
  const opened=remix.lock(store,batch.id,a.id),inventory=hashes(opened);const report=await balance(opened,{target:0});assert.equal(report.eligible,2);assert(report.changed>0);assert.deepEqual(opened.projects[2],fixed);remix.save(store,opened);const read=remix.get(store,batch.id);allocation.reconcile(store,read);assert.deepEqual(hashes(read),inventory);assert.equal(read.projects[0].installed,a.installed);assert.equal(remix.lock(store,batch.id,a.id).projects[0].mixUnlocked,false);
  }finally{store.close();}
 });
+
+function attachSongs(p){
+ p.editUndo=[{name:p.name,editor:structuredClone(p.editor),assignments:[]}];
+ p.assignments=p.blocks.map((b,i)=>({block:i,name:p.name+' song '+i,fingerprint:p.name+i,sourceDuration:100,start:b.start,duration:b.duration}));
+ return new Map(p.editor.blocks.map((b,i)=>[b.id,p.assignments[i].name]));
+}
+for(const move of [false,true])test('Preview details and block music survive '+(move?'whole block move':'clip swaps'),async()=>{
+ const a=project(move?1:2,1),b=project(1,2);
+ if(move){a.editor.blocks.push(b.editor.blocks.pop());edit.rebuild(a);edit.rebuild(b);}
+ const songs=new Map([...attachSongs(a),...attachSongs(b)]),undo=[a,b].map(p=>structuredClone(p.editUndo));
+ const batch={projects:[a,b],sources:[]};
+ const report=await balance(batch,{target:0,keepPosition:!move});
+ assert(report.changed);assert.equal(report.changes.length,report.swaps+report.moves);
+ assert(report.changes.some(c=>move?c.type==='move'&&c.clips.length:c.type==='swap'&&c.from.name&&c.to.name&&c.from.slot===c.to.slot));
+ for(const [index,p] of batch.projects.entries()){
+  assert.deepEqual(p.editUndo,undo[index]);assert.equal(p.assignments.length,p.blocks.length);
+  for(const a of p.assignments){const b=p.blocks[a.block],delay=b.hook?3e6:0;
+   assert.equal(a.name,songs.get(p.editor.blocks[a.block].id));assert.equal(a.start,b.start+delay);assert.equal(a.duration,b.duration-delay);
+  }
+ }
+});
+test('Insufficient song lengths prevent a swap without removing the assigned song',async()=>{
+ const a=project(2,1),b=project(1,2);attachSongs(a);attachSongs(b);
+ for(const song of b.assignments){song.sourceDuration=b.blocks[song.block].duration/1e6;song.fingerprint=a.assignments[song.block].fingerprint;}
+ const batch={projects:[a,b],sources:[]},before=JSON.stringify(batch.projects);
+ const report=await balance(batch,{target:0});assert(report.musicLimited);assert.equal(report.changed,0);assert.equal(JSON.stringify(batch.projects),before);
+});

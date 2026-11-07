@@ -9,6 +9,20 @@ async function balance(batch,value={},sources=[]){
  const o=options(value),original=batch.projects,projects=original.filter(p=>!p.locked&&(!p.installed||p.mixUnlocked)).map(p=>clone(p)),origins=new Map();
  for(const s of sources)for(const [bi,b]of s.blocks.entries())for(const [slot,u]of b.units.entries()){const key=u.identity||u.fingerprint;if(!origins.has(key))origins.set(key,[]);origins.get(key).push({block:bi,slot});}
  for(const p of projects){edit().init(p);p.settings??=require('./remix-settings.cjs').effective(p,batch.renderSettings||batch.settings);for(const [bi,b]of p.editor.blocks.entries())for(const [slot,u]of b.units.entries())if(bi>0||o.mixHook)u.balanceOrigins??=clone(origins.get(u.fingerprint)||[{block:bi,slot}]);}
+ // Associate songs with block objects before any exchange changes their indexes.
+ const songs=new Map(),blockLengths=new Map(),changes=[];
+ for(const p of projects){
+  for(const block of p.editor.blocks)blockLengths.set(block,block.units.reduce((n,u)=>n+length(u),0));
+  for(const song of p.assignments||[]){const block=p.editor.blocks[song.block];if(block)songs.set(block,song);}
+ }
+ let musicLimited=false;
+ function fits(p,block,last,delta=0){
+  const song=songs.get(block);
+  if(!song)return true;
+  const duration=blockLengths.get(block)+delta+(last&&p.editor.ending?length(p.editor.ending):0)-(block.hook?(p.settings.hookDelay??3):0);
+  return duration>0&&Math.round(duration*1e6)<=Math.round(song.sourceDuration*1e6);
+ }
+ const clipInfo=(p,index,slot,u)=>({video:p.name,block:index,slot:slot+1,name:u.name||u.path,duration:length(u)});
  const before=projects.map(total),times=[...before],initial=projects.map(p=>JSON.stringify(p.editor.blocks.map(b=>b.units.map(u=>u.id))));let swaps=0,moves=0,limited=false;const deadline=Date.now()+5000;
  const legal=(u,bi,slot)=>u.empty||!o.keepPosition||u.balanceOrigins.some(x=>x.slot===slot&&(bi===0?x.block===0:x.block>0&&Math.abs(x.block-bi)<=1));
  const contains=(p,u,except)=>!u.empty&&p.editor.blocks.some(b=>b.units.some(v=>v!==except&&!v.empty&&v.fingerprint===u.fingerprint));
@@ -18,17 +32,27 @@ async function balance(batch,value={},sources=[]){
   const consider=(i,j,delta,action)=>{const gain=(times[i]-times[j])*delta-delta*delta;if(gain<=bestGain)return;const a=times[i],b=times[j];times[i]-=delta;times[j]+=delta;const range=spread(times);times[i]=a;times[j]=b;if(range>oldSpread+.00001)return;bestGain=gain;best=action;};
   for(let i=0;i<projects.length;i++)for(let j=i+1;j<projects.length;j++){
    if(j%8===0)await new Promise(r=>setImmediate(r));const a=projects[i],b=projects[j];for(let ai=o.mixHook?0:1;ai<a.editor.blocks.length;ai++)for(let bi=ai===0?0:1;bi<b.editor.blocks.length;bi++){
-    if((ai===0)!==(bi===0))continue;const ab=a.editor.blocks[ai],bb=b.editor.blocks[bi];for(let slot=0;slot<Math.min(ab.units.length,bb.units.length);slot++){const u=ab.units[slot],v=bb.units[slot];if(u.empty||v.empty||!legal(u,bi,slot)||!legal(v,ai,slot)||contains(a,v,u)||contains(b,u,v))continue;const delta=length(u)-length(v);consider(i,j,delta,()=>{ab.units[slot]=v;bb.units[slot]=u;times[i]-=delta;times[j]+=delta;swaps++;});}
+    if((ai===0)!==(bi===0))continue;const ab=a.editor.blocks[ai],bb=b.editor.blocks[bi];for(let slot=0;slot<Math.min(ab.units.length,bb.units.length);slot++){const u=ab.units[slot],v=bb.units[slot];if(u.empty||v.empty||!legal(u,bi,slot)||!legal(v,ai,slot)||contains(a,v,u)||contains(b,u,v))continue;const delta=length(u)-length(v);if(!delta)continue;
+    if(!fits(a,ab,ai===a.editor.blocks.length-1,-delta)||!fits(b,bb,bi===b.editor.blocks.length-1,delta)){musicLimited=true;continue;}
+    consider(i,j,delta,()=>{changes.push({type:'swap',from:clipInfo(a,ai,slot,u),to:clipInfo(b,bi,slot,v)});
+    blockLengths.set(ab,blockLengths.get(ab)-delta);blockLengths.set(bb,blockLengths.get(bb)+delta);ab.units[slot]=v;bb.units[slot]=u;times[i]-=delta;times[j]+=delta;swaps++;});}
    }
   }
   if(!best)for(let i=0;i<projects.length;i++)for(let j=0;j<projects.length;j++)if(i!==j&&times[i]>times[j]){
-   const a=projects[i],b=projects[j];if(a.editor.blocks.length<=2)continue;for(let bi=1;bi<a.editor.blocks.length;bi++){const block=a.editor.blocks[bi],delta=block.units.reduce((n,u)=>n+length(u),0);if(block.units.some(u=>contains(b,u,null)))continue;const left=a.editor.blocks.filter((_,k)=>k!==bi);if(!validBlocks(left))continue;for(let at=1;at<=b.editor.blocks.length;at++){const right=[...b.editor.blocks];right.splice(at,0,block);if(!validBlocks(right))continue;consider(i,j,delta,()=>{a.editor.blocks=left;b.editor.blocks=right;times[i]-=delta;times[j]+=delta;moves++;});}}
+   const a=projects[i],b=projects[j];if(a.editor.blocks.length<=2)continue;for(let bi=1;bi<a.editor.blocks.length;bi++){const block=a.editor.blocks[bi],delta=block.units.reduce((n,u)=>n+length(u),0);if(block.units.some(u=>contains(b,u,null)))continue;const left=a.editor.blocks.filter((_,k)=>k!==bi);if(!validBlocks(left))continue;for(let at=1;at<=b.editor.blocks.length;at++){const right=[...b.editor.blocks];right.splice(at,0,block);if(!validBlocks(right))continue;const song=songs.get(block);
+    if((song&&b.editor.blocks.some(bl=>songs.get(bl)?.fingerprint===song.fingerprint))||
+       !fits(a,left.at(-1),true)||!fits(b,right.at(-1),true)||!fits(b,block,at===right.length-1)){musicLimited=true;continue;}
+    consider(i,j,delta,()=>{changes.push({type:'move',from:{video:a.name,block:bi},to:{video:b.name,block:at},clips:block.units.filter(u=>!u.empty).map(u=>u.name||u.path)});a.editor.blocks=left;b.editor.blocks=right;times[i]-=delta;times[j]+=delta;moves++;});}}
   }
   if(!best)break;best();
  }
  const rows=[];let changed=0;
- projects.forEach((p,i)=>{const different=initial[i]!==JSON.stringify(p.editor.blocks.map(b=>b.units.map(u=>u.id)));rows.push({id:p.id,name:p.name,before:before[i],after:times[i],changed:different});if(!different)return;changed++;p.editor.revision++;p.editUndo=[];p.editedAt=new Date().toISOString();p.assignments=[];edit().rebuild(p);const source=sources.find(s=>p.sourceId?s.sourceId===p.sourceId:s.name===p.sourceName);if(source)p.sourceBodyHashes=[...new Set(source.blocks.slice(1).flatMap(b=>b.units.map(u=>u.identity)))];Object.assign(p,require('./remix.cjs').reuseStats(p));batch.projects[batch.projects.findIndex(x=>x.id===p.id)]=p;});
- const report={before:spread(before),after:spread(times),target:o.target,reached:spread(times)<=o.target+.001,changed,swaps,moves,limited,eligible:projects.length,skipped:original.length-projects.length,rows};batch.balanceOptions=o;batch.balanceReport=report;return report;
+ projects.forEach((p,i)=>{const different=initial[i]!==JSON.stringify(p.editor.blocks.map(b=>b.units.map(u=>u.id)));rows.push({id:p.id,name:p.name,before:before[i],after:times[i],changed:different});if(!different)return;changed++;p.editor.revision++;p.editedAt=new Date().toISOString();
+  edit().rebuild(p);
+  p.assignments=p.editor.blocks.flatMap((block,index)=>songs.has(block)?[{...songs.get(block),block:index}]:[]);
+  p.assignments=require('./remix-timing.cjs').assignments(p,p.settings);
+  const source=sources.find(s=>p.sourceId?s.sourceId===p.sourceId:s.name===p.sourceName);if(source)p.sourceBodyHashes=[...new Set(source.blocks.slice(1).flatMap(b=>b.units.map(u=>u.identity)))];Object.assign(p,require('./remix.cjs').reuseStats(p));batch.projects[batch.projects.findIndex(x=>x.id===p.id)]=p;});
+ const report={before:spread(before),after:spread(times),target:o.target,reached:spread(times)<=o.target+.001,changed,swaps,moves,changes,musicLimited,limited,eligible:projects.length,skipped:original.length-projects.length,rows};batch.balanceOptions=o;batch.balanceReport=report;return report;
 }
 const pending=new Map();
 async function preview(store,{id,settings}){const remix=require('./remix.cjs'),b=remix.get(store,id),updated=b.updated,version=JSON.stringify(b),sources=await remix.analyzeSources(b.sources),report=await balance(b,settings,sources),token=uid();for(const [k,v]of pending)if(Date.now()-v.at>600000)pending.delete(k);for(const [k,v]of pending)if(v.store===store&&v.id===id)pending.delete(k);pending.set(token,{store,id,updated,version,b,at:Date.now()});return {token,...report};}
