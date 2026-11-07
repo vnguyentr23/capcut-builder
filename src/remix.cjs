@@ -166,8 +166,9 @@ function mixAddedUnits(batch,fresh,sources){
 async function fillSourceGaps(store,id){
  const batch=get(store,id),version=batch.updated;
  const parent=sourceUpdate(store,batch)?.source;
- if(!parent)throw Error('Không tìm thấy bộ nguồn gốc để khôi phục vị trí trống.');
- const sources=await analyzeSources(parent.sources,batch.options);
+ const snapshots=parent?.sources?.length?parent.sources:batch.sources;
+ if(!snapshots?.length)throw Error('Bộ này thiếu timeline nguồn. Hãy nhập gói bộ nguồn của cùng ngách rồi thử lại.');
+ const sources=await analyzeSources(snapshots,batch.options);
  const edit=require('./remix-editor.cjs'),allocation=require('./remix-allocation.cjs');
  const blocked=require('./blacklist.cjs').matcher(store);
  const used=require('./remix-used.cjs')(store,batch.channelId,batch);
@@ -212,13 +213,18 @@ async function addToSource(store,{id,stateId,sourceIds}){
 }
 function sourceUpdate(store,batch){
  let source;
- if(batch.sourceBatchId){try{source=get(store,batch.sourceBatchId);}catch{return null;}}
- else{
-  const ids=batch.inputSourceIds||batch.sources.map(s=>s.id);
-  const candidates=store.db.prepare("SELECT data FROM remix_batches WHERE root_id=? AND json_extract(summary,'$.count')=0").all(batch.rootId).map(r=>JSON.parse(r.data)).filter(b=>!b.projects.length&&ids.length&&ids.every(id=>b.sources.some(s=>s.id===id)));
-  if(candidates.length===1)source=candidates[0];
+ if(batch.sourceBatchId){
+  const row=store.db.prepare('SELECT data FROM remix_batches WHERE id=? AND root_id=?').get(batch.sourceBatchId,batch.rootId);
+  if(row){const direct=JSON.parse(row.data);if(!direct.projects.length)source=direct;}
  }
- if(!source||source.rootId!==batch.rootId||source.projects.length)return null;
+ if(!source){
+  const ids=batch.inputSourceIds||batch.sources.map(s=>s.id);
+  const candidates=store.db.prepare("SELECT data FROM remix_batches WHERE root_id=? AND json_extract(summary,'$.count')=0").all(batch.rootId).map(r=>JSON.parse(r.data));
+  const imported=batch.sourceBatchId?candidates.filter(b=>b.originPackageId===batch.sourceBatchId):[];
+  const matches=imported.length?imported:candidates.filter(b=>ids.length&&ids.every(id=>b.sources.some(s=>s.id===id)));
+  if(matches.length!==1)return null;
+  source=matches[0];
+ }
  const consumed=new Set(batch.inputSourceIds||batch.sources.map(s=>s.id));
  return {source,newSources:source.sources.filter(s=>!consumed.has(s.id))};
 }

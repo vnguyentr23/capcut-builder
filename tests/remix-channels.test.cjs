@@ -97,6 +97,10 @@ test('Source collections grow once and each channel consumes saved additions ind
   const editor=require('../src/remix-editor.cjs'),alloc=require('../src/remix-allocation.cjs');
   const repairTarget=result.projects[0],e=editor.init(repairTarget),originalLength=repairTarget.draft.duration;
   e.blocks[1].units[0]=alloc.empty('Test');editor.rebuild(repairTarget);remix.save(store,result);
+  // Import gives the parent a new local ID while the child retains its old reference.
+  const importedParent=remix.get(store,source.id);importedParent.originPackageId='parent-on-old-machine';remix.save(store,importedParent);
+  result.sourceBatchId=importedParent.originPackageId;remix.save(store,result);
+  assert.equal(remix.sourceUpdate(store,result).source.id,source.id);
   const repaired=await remix.fillSourceGaps(store,result.id);assert.equal(repaired.restored,1);assert.equal(repaired.remaining,0);assert.equal(remix.get(store,result.id).projects[0].draft.duration,originalLength);
   const restoredBatch=remix.get(store,result.id),exported=restoredBatch.projects[0];
   const footprint=exported.editor.blocks[1].units[0].fingerprint;
@@ -107,12 +111,15 @@ test('Source collections grow once and each channel consumes saved additions ind
   exported.editor.blocks[1].units[0]=alloc.empty('Missing');editor.rebuild(exported);remix.save(store,restoredBatch);
   assert.equal((await remix.fillSourceGaps(store,result.id)).restored,0);
   remix.lock(store,result.id,exported.id);
+  // A transferred child also carries source snapshots when its parent is unavailable.
+  store.db.prepare('DELETE FROM remix_batches WHERE id=?').run(source.id);
   assert.equal((await remix.fillSourceGaps(store,result.id)).restored,1);
   const recovered=remix.get(store,result.id);
   assert.equal(recovered.projects[0].editor.blocks[1].units[0].fingerprint,footprint);
   assert.equal(recovered.projects[0].draft.duration,originalLength);
   const report=await require('../src/remix-balance.cjs').balance(recovered,{target:30});
   assert(report.rows.some(row=>row.id===exported.id));
+  remix.save(store,importedParent);
   assert.equal(result.projects.length,3);assert.equal(remix.sourceUpdate(store,result).newSources.length,0);
   assert.equal(remix.sourceUpdate(store,remix.get(store,second.id)).newSources.length,1);
   await assert.rejects(remix.updateFromSource(store,{id:first.id,stateId:a.id}),/Không có video nguồn mới/);
