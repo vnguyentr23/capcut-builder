@@ -23,15 +23,49 @@ function fontFile(name){
   return candidate;
 }
 const fontCache=new Map();
+let fallbackFonts;
+function fallbackFont(codepoint,primary){
+  if(primary.hasGlyphForCodePoint(codepoint))return primary;
+  if(!fallbackFonts){
+    const dir=path.join(process.env.WINDIR||'C:/Windows','Fonts');
+    fallbackFonts=['msyh.ttc','msgothic.ttc','seguiemj.ttf','seguisym.ttf']
+      .map(name=>path.join(dir,name)).filter(file=>fs.existsSync(file))
+      .flatMap(file=>{
+        try{const f=require('fontkit').openSync(file);return [f.fonts?.[0]||f];}
+        catch{return [];}
+      });
+  }
+  return fallbackFonts.find(f=>f.hasGlyphForCodePoint(codepoint))||primary;
+}
+function measureCredit(text,primary,em){
+  const runs=[];
+  for(const ch of text){
+    const font=fallbackFont(ch.codePointAt(0),primary);
+    const previous=runs.at(-1);
+    if(previous?.font===font)previous.text+=ch;
+    else runs.push({font,text:ch});
+  }
+  let width=0,height=0;
+  for(const {font,text:runText} of runs){
+    const layout=font.layout(runText);
+    const cjkFallback=font!==primary && /[\p{Script=Han}\p{Script=Katakana}\p{Script=Hiragana}\uFF00-\uFFEF]/u.test(runText);
+    const factor=em/font.unitsPerEm;
+    width+=layout.positions.reduce((n,pos)=>n+pos.xAdvance,0)*factor*(cjkFallback?100/85:1);
+    const inkHeight=layout.bbox.maxY-layout.bbox.minY;
+    if(Number.isFinite(inkHeight))height=Math.max(height,inkHeight*factor);
+  }
+  return {width,height};
+}
 function makeText(c,segment){
   const p=c.text,fontPath=fontFile(p.font),font=fontCache.get(fontPath)||(()=>{const f=require('fontkit').openSync(fontPath);return f.fonts?.[0]||f;})();fontCache.set(fontPath,font);
-  // XAO_VIDEO's calibrated text geometry: font size 15 / scale 0.2 = 33.333 px per em.
-  const em=p.size*p.scale*(100/9),maxWidth=1920-p.marginLeft;
-  const width=s=>font.layout(s).positions.reduce((n,x)=>n+x.xAdvance,0)/font.unitsPerEm*em;
+  // Calibrated against the visible credit on CapCut's 1080p preview.
+  const em=p.size*p.scale*(85/9),maxWidth=1920-p.marginLeft;
+  const measure=line=>measureCredit(line,font,em);
+  const width=line=>measure(line).width;
   const credit=require('./credit-prefix.cjs').format(c.source,p.prefix,c.previousPrefix);
   const source=p.letterCase==='upper'?credit.toLocaleUpperCase():p.letterCase==='lower'?credit.toLocaleLowerCase():p.letterCase==='title'?credit.toLocaleLowerCase().replace(/(^|[^\p{L}\p{N}])(\p{L})/gu,(_,a,b)=>a+b.toLocaleUpperCase()):credit;
   const lines=[];for(const raw of source.split('\n')){let line='';for(const ch of raw){if(line&&width(line+ch)>maxWidth){lines.push(line);line='';}line+=ch;}lines.push(line);}
-  const text=lines.join('\n'),w=Math.max(...lines.map(width)),h=em*(1+(lines.length-1)*1.2);
+  const text=lines.join('\n'),w=Math.max(...lines.map(width)),h=Math.max(...lines.map(line=>measure(line).height))+em*(lines.length-1)*1.2;
   if(h>1080-p.marginBottom)throw Error('Credit quá dài để đặt trong khung hình: '+path.basename(c.path));
   const m=clone(template.textMaterial);Object.assign(m,{id:uid(),font_path:slash(fontPath),font_name:font.fullName||p.font,font_size:p.size,text_color:p.color,text_alpha:1,alignment:0,border_color:p.strokeColor,border_width:p.stroke/100,has_shadow:!!p.shadow,shadow_alpha:p.shadow?0.9:0,shadow_color:'#000000',shadow_distance:p.shadow?5:0});
   const rgb=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255);
