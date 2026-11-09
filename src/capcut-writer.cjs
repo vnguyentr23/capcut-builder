@@ -37,7 +37,7 @@ function fallbackFont(codepoint,primary){
   }
   return fallbackFonts.find(f=>f.hasGlyphForCodePoint(codepoint))||primary;
 }
-function measureCredit(text,primary,em){
+function measureCredit(text,primary,em,includeHeight=true){
   const runs=[];
   for(const ch of text){
     const font=fallbackFont(ch.codePointAt(0),primary);
@@ -51,8 +51,19 @@ function measureCredit(text,primary,em){
     const cjkFallback=font!==primary && /[\p{Script=Han}\p{Script=Katakana}\p{Script=Hiragana}\uFF00-\uFFEF]/u.test(runText);
     const factor=em/font.unitsPerEm;
     width+=layout.positions.reduce((n,pos)=>n+pos.xAdvance,0)*factor*(cjkFallback?100/85:1);
-    const inkHeight=layout.bbox.maxY-layout.bbox.minY;
-    if(Number.isFinite(inkHeight))height=Math.max(height,inkHeight*factor);
+    if(includeHeight){
+      // Color/bitmap glyphs may have no outline accessible to fontkit.
+      // Use the font metrics for those runs; keep the shaped advance above.
+      let inkHeight;
+      try{
+        const box=layout.bbox;
+        inkHeight=box.maxY-box.minY;
+      }catch{
+        inkHeight=font.ascent-font.descent;
+        if(!Number.isFinite(inkHeight)||inkHeight<=0)inkHeight=font.unitsPerEm;
+      }
+      if(Number.isFinite(inkHeight))height=Math.max(height,inkHeight*factor);
+    }
   }
   return {width,height};
 }
@@ -61,7 +72,7 @@ function makeText(c,segment){
   // Calibrated against the visible credit on CapCut's 1080p preview.
   const em=p.size*p.scale*(85/9),maxWidth=1920-p.marginLeft;
   const measure=line=>measureCredit(line,font,em);
-  const width=line=>measure(line).width;
+  const width=line=>measureCredit(line,font,em,false).width;
   const credit=require('./credit-prefix.cjs').format(c.source,p.prefix,c.previousPrefix);
   const source=p.letterCase==='upper'?credit.toLocaleUpperCase():p.letterCase==='lower'?credit.toLocaleLowerCase():p.letterCase==='title'?credit.toLocaleLowerCase().replace(/(^|[^\p{L}\p{N}])(\p{L})/gu,(_,a,b)=>a+b.toLocaleUpperCase()):credit;
   const lines=[];for(const raw of source.split('\n')){let line='';for(const ch of raw){if(line&&width(line+ch)>maxWidth){lines.push(line);line='';}line+=ch;}lines.push(line);}
