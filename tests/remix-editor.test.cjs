@@ -179,6 +179,14 @@ test('Swap picker marks exported copies while retaining eligible unexported peer
  done.installed={path:'capcut'};done.mixUnlocked=true;done.locked=false;
  const b={id:uid(),rootId:state.id,channelId:state.id,name:'B',sources:[],projects:[p,peer,done],settings:defaults()};remix.save(store,b);
  const shown=edit.open(store,b.id,p.id);
- for(const index of [0,1]){const rows=edit.swapCandidates(store,b.id,p.id,shown.blocks[index].units[0].id);assert.equal(rows.length,2);assert(rows.every(c=>c.peerId===peer.id&&c.exportedBefore));}
+ for(const index of [0,1]){const rows=edit.swapCandidates(store,b.id,p.id,shown.blocks[index].units[0].id);assert.equal(rows.length,2);assert(rows.every(c=>c.peerId===peer.id&&c.exportedBefore&&c.exportedProjects.includes(done.name)));}
+ }finally{store.close();}
+});
+
+test('Swap picker shows blocked footage but cannot select it',async()=>{
+ const store=new Store(':memory:');try{const state=store.create('Blocked picker'),p=fixture(),peer=fixture();for(const bl of peer.blocks)for(const c of bl.clips)c.fingerprint='e'+c.fingerprint.slice(1);
+ const b={id:uid(),rootId:state.id,channelId:state.id,name:'B',sources:[],projects:[p,peer],settings:defaults()};remix.save(store,b);const shown=edit.open(store,b.id,p.id),id=shown.blocks[0].units[0].id;
+ require('../src/blacklist.cjs').merge(store,[{type:'footage',value:peer.blocks[0].clips[0].fingerprint,name:'Blocked'}]);const rows=edit.swapCandidates(store,b.id,p.id,id),c=rows.find(c=>c.copyrightBlocked);assert(c);assert.equal(rows.length,2);
+ await assert.rejects(edit.mutate(store,{id:b.id,projectId:p.id,revision:shown.revision,op:'swapPeer',unitId:id,peerId:c.peerId,otherId:c.unitId,peerRevision:c.peerRevision}));
  }finally{store.close();}
 });

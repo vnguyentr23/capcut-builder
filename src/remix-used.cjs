@@ -12,3 +12,13 @@ function exportedFootage(store,channelId,batch=null,excludeProjectId=null){
  return used;
 }
 module.exports=exportedFootage;
+
+// Display history includes exports reopened for editing; it does not reserve footage.
+module.exports.locations=function(store,channelId){
+ const map=new Map(),add=(hash,name)=>{if(!hash||!name)return;const names=map.get(hash)||[];if(!names.includes(name))names.push(name);map.set(hash,names);};
+ for(const row of store.db.prepare("SELECT DISTINCT u.fingerprint,p.name FROM usage u JOIN projects p ON p.id=u.project_id WHERE u.niche_id=? AND p.status IN ('CREATED','REMIX_CREATED')").all(channelId))add(row.fingerprint,row.name);
+ for(const row of store.db.prepare(`SELECT json_extract(p.value,'$.name') name,json_extract(c.value,'$.fingerprint') fingerprint
+ FROM remix_batches rb,json_each(rb.data,'$.projects') p,json_each(p.value,'$.blocks') bl,json_each(bl.value,'$.clips') c
+ WHERE rb.channel_id=? AND json_extract(p.value,'$.installed') IS NOT NULL`).all(channelId))add(row.fingerprint,row.name);
+ return map;
+};

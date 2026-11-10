@@ -89,7 +89,7 @@ function open(store,id,projectId){const {b,p,changed}=load(store,id,projectId);i
 const exportedFootage=require('./remix-used.cjs');
 async function candidates(store,id,projectId,unitId){const {b,p}=load(store,id,projectId),at=locate(p.editor,unitId),sources=await remix.analyzeSources(b.sources),exported=exportedFootage(store,b.channelId,b),used=new Set([...(at.b.hook?[]:exported),...(at.b.hook?[]:require('./remix-allocation.cjs').others(b,p.id)),...p.editor.blocks.flatMap(b=>b.units.map(u=>u.fingerprint))]);return sources.flatMap(s=>s.blocks.flatMap((bl,bi)=>bl.units.flatMap((u,slot)=>slot===at.i&&((at.b.hook&&bi===0)||(!at.b.hook&&bi>0&&Math.abs(bi-p.editor.blocks.indexOf(at.b))<=1))&&!used.has(u.identity)&&!require('./blacklist.cjs').matcher(store)(u)?[{usedBefore:exported.has(u.identity),sourceId:s.sourceId,unitId:u.id,name:u.name||path.basename(u.path),path:u.path,sourceName:s.name,block:bi,slot,duration:u.duration/1e6}]:[])));}
 // Pick from current peer drafts, never from stale source timelines.
-function peerChoices(store,b,p,unitId){
+function peerChoices(store,b,p,unitId,includeBlocked=false){
  const at=locate(init(p),unitId);if(at.ending)return [];
  const bi=p.editor.blocks.indexOf(at.b),used=new Set([...p.editor.blocks.flatMap(bl=>bl.units.filter(u=>!u.empty).map(u=>u.fingerprint)),p.editor.ending?.fingerprint].filter(Boolean)),blocked=require('./blacklist.cjs').matcher(store);
  const result=[];
@@ -97,17 +97,17 @@ function peerChoices(store,b,p,unitId){
   if(peer.id===p.id||peer.installed||peer.locked)continue;
   const e=init(peer),bl=e.blocks[bi];if(!bl)continue;
   for(const [slot,u] of bl.units.entries()){
-   if(u.empty||used.has(u.fingerprint)||blocked(u))continue;
+   if(u.empty||used.has(u.fingerprint)||(!includeBlocked&&blocked(u)))continue;
    if(!at.u.empty&&(e.ending?.fingerprint===at.u.fingerprint||e.blocks.some(x=>x.units.some(v=>v.id!==u.id&&!v.empty&&v.fingerprint===at.u.fingerprint))))continue;
-   result.push({...summary(u),unitId:u.id,peerId:peer.id,peerRevision:e.revision,sourceName:peer.name,block:bi,slot});
+   result.push({...summary(u),copyrightBlocked:blocked(u)?.name||'',unitId:u.id,peerId:peer.id,peerRevision:e.revision,sourceName:peer.name,block:bi,slot});
   }
  }
  return result;
 }
-function swapCandidates(store,id,projectId,unitId){const {b,p,changed}=load(store,id,projectId),needsInit=b.projects.some(x=>!x.editor),rows=peerChoices(store,b,p,unitId);if(changed||needsInit)remix.save(store,b);
+function swapCandidates(store,id,projectId,unitId){const {b,p,changed}=load(store,id,projectId),needsInit=b.projects.some(x=>!x.editor),rows=peerChoices(store,b,p,unitId,true);if(changed||needsInit)remix.save(store,b);
  // Historical display marker is independent of eligibility/reopened export reservations.
- const exported=exportedFootage(store,b.channelId);
- return rows.map(c=>({...c,exportedBefore:exported.has(c.fingerprint)}));}
+ const exported=exportedFootage.locations(store,b.channelId);
+ return rows.map(c=>({...c,exportedBefore:exported.has(c.fingerprint),exportedProjects:exported.get(c.fingerprint)||[]}));}
 function swapPeer(store,args){
  const {b,p}=load(store,args.id,args.projectId);
  if(p.editor.revision!==args.revision)throw Error('Bản nháp đã thay đổi. Mở lại trước khi lưu.');
