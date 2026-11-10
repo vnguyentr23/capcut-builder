@@ -157,3 +157,10 @@ test('In-project swaps allow reused footage with warning and preserve peer proje
  await edit.mutate(store,{id:b.id,projectId:p.id,revision:next.revision,op:'undo'});assert.equal(edit.open(store,b.id,p.id).blocks[1].units[0].id,hook);
  }finally{store.close();}
 });
+
+test('Light music preview preserves block timing and invalidates after saving a new assignment',()=>{
+ const store=new Store(':memory:');try{const state=store.create('Preview'),p=fixture();edit.init(p);p.assignments=[{block:0,name:'First',duration:9e6}];const b={id:uid(),rootId:state.id,channelId:state.id,name:'B',sources:[],projects:[p],settings:defaults()};remix.save(store,b);
+ const first=remix.musicPreview(store,b.id,p.id);assert.deepEqual(first.p.blocks,p.blocks);assert.deepEqual(first.p.assignments,p.assignments);assert.deepEqual(first.p.editor.blocks,p.editor.blocks.map(x=>({id:x.id})));assert.equal(first.p.draft,undefined);
+ p.assignments[0].name='Second';remix.save(store,b);assert.equal(remix.musicPreview(store,b.id,p.id).p.assignments[0].name,'Second');
+ }finally{store.close();}
+});

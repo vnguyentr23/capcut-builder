@@ -39,9 +39,21 @@ function upgradeProjectNames(store,batch){
  save(store,batch);
 }
 function mediaPath(store,id,projectId,unitId){const b=readCached(store,id),p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy bản nháp.');const units=[...(p.editor?.blocks||[]).flatMap(b=>b.units),...(p.editor?.ending?[p.editor.ending]:[])];return units.find(u=>u.id===unitId)?.path;}
-function musicPreview(store,id,projectId){const b=readCached(store,id),p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy bản nháp.');return {p,settings:require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings)};}
+const musicReadCache=new WeakMap();
+function musicPreview(store,id,projectId){
+ const stamp=store.db.prepare('SELECT updated FROM remix_batches WHERE id=?').get(id)?.updated;
+ const cached=musicReadCache.get(store);if(cached?.id===id&&cached.projectId===projectId&&cached.stamp===stamp)return cached.value;
+ const row=store.db.prepare(`SELECT json_object('id',json_extract(p.value,'$.id'),'settings',json_extract(p.value,'$.settings'),
+ 'assignments',json_extract(p.value,'$.assignments'),'blocks',json_extract(p.value,'$.blocks'),
+ 'editor',json_object('blocks',json((SELECT json_group_array(json_object('id',json_extract(bl.value,'$.id'))) FROM json_each(p.value,'$.editor.blocks') bl)))) AS project,
+ json_extract(rb.data,'$.renderSettings') AS render_settings,json_extract(rb.data,'$.settings') AS settings
+ FROM remix_batches rb,json_each(rb.data,'$.projects') p WHERE rb.id=? AND json_extract(p.value,'$.id')=?`).get(id,projectId);
+ if(!row)throw Error('Không tìm thấy bản nháp.');
+ const p=JSON.parse(row.project),value={p,settings:require('./remix-settings.cjs').effective(p,JSON.parse(row.render_settings||row.settings||'{}'))};
+ musicReadCache.set(store,{id,projectId,stamp,value});return value;
+}
 
-function save(store,b){batchReadCache.get(store)?.delete(b.id);b.updated=new Date().toISOString();const summary={count:b.projects.length,sourceCount:b.sources.length,created:b.projects.filter(p=>p.installed).length,names:b.projects.map(p=>p.name),sourceBatchId:b.sourceBatchId||null,inputSourceIds:b.inputSourceIds||b.sources.map(s=>s.id),sourceIds:b.sources.map(s=>s.id),signatures:[...new Set([...(b.inheritedHistory||[]),...b.projects.map(p=>p.signature)])]};store.db.prepare('INSERT INTO remix_batches(id,root_id,channel_id,name,data,updated,summary) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated=excluded.updated,name=excluded.name,summary=excluded.summary').run(b.id,b.rootId,b.channelId,b.name,JSON.stringify(b),b.updated,JSON.stringify(summary));return b;}
+function save(store,b){musicReadCache.delete(store);batchReadCache.get(store)?.delete(b.id);b.updated=new Date().toISOString();const summary={count:b.projects.length,sourceCount:b.sources.length,created:b.projects.filter(p=>p.installed).length,names:b.projects.map(p=>p.name),sourceBatchId:b.sourceBatchId||null,inputSourceIds:b.inputSourceIds||b.sources.map(s=>s.id),sourceIds:b.sources.map(s=>s.id),signatures:[...new Set([...(b.inheritedHistory||[]),...b.projects.map(p=>p.signature)])]};store.db.prepare('INSERT INTO remix_batches(id,root_id,channel_id,name,data,updated,summary) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated=excluded.updated,name=excluded.name,summary=excluded.summary').run(b.id,b.rootId,b.channelId,b.name,JSON.stringify(b),b.updated,JSON.stringify(summary));return b;}
 function reuseStats(p){const body=p.editor?p.editor.blocks.slice(1).flatMap(b=>b.units).filter(u=>!u.empty).map(u=>u.fingerprint):p.blocks.slice(1).flatMap(b=>b.clips).map(c=>c.fingerprint);if(!Array.isArray(p.sourceBodyHashes))return {reusedPercent:null,reusedCount:null,bodyCount:body.length};const source=new Set(p.sourceBodyHashes),count=body.filter(h=>h&&source.has(h)).length;return {reusedPercent:body.length?Math.round(count*100/body.length):0,reusedCount:count,bodyCount:body.length};}
 async function refreshReuse(store,b){if(!b.projects.some(p=>!Array.isArray(p.sourceBodyHashes)))return;// Opening the batch must not hash original footage from disk.
 const complete=b.sources.every(src=>(src.draft.materials?.videos||[]).every(m=>!m.path||src.fingerprints?.[norm(m.path)]));

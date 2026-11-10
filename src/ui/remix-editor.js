@@ -11,8 +11,8 @@
  const $r=id=>document.getElementById(id),base=()=>({id:batchId,projectId:doc.id}),payload=()=>({...base(),revision:doc.revision});let folders={};
  async function task(fn,label='Đang xử lý bản nháp…'){if(pending||busy)return;pending=true;pane.inert=true;try{return await run(label,fn);}finally{pending=false;pane.inert=false;}}
 
- async function saveEdit(op,values={}){return task(async()=>{doc=await api('remixEditSave',{...payload(),op,...values});paint();toast(doc.warnings?.length?'⚠ '+doc.warnings.join(' '):'Đã lưu bản nháp.');return true;},op==='blockMusic'?'Đang chọn và đổi nhạc…':'Đang lưu bản nháp…');}
- window.openRemixEditor=(id,projectId)=>task(async()=>{stopFootage();toggleSettings(false);batchId=id;mediaCache.clear();doc=await api('remixEditOpen',{id,projectId});folders={...remixBatch?.musicFolders};document.body.classList.add('remixDraftMode','remixMode');$('#remixPanel').hidden=true;pane.hidden=false;selectedSwap=null;paint();});
+ async function saveEdit(op,values={}){return task(async()=>{doc=await api('remixEditSave',{...payload(),op,...values});if(['blockMusic','swapMusicHook'].includes(op))paintMusic();else paint();toast(doc.warnings?.length?'⚠ '+doc.warnings.join(' '):'Đã lưu bản nháp.');return true;},op==='blockMusic'?'Đang chọn và đổi nhạc…':'Đang lưu bản nháp…');}
+ window.openRemixEditor=(id,projectId)=>task(async()=>{stopFootage();toggleSettings(false);batchId=id;mediaCache.clear();doc=await api('remixEditOpen',{id,projectId});folders={...remixBatch?.musicFolders};document.body.classList.add('remixDraftMode','remixMode');$('#remixPanel').hidden=true;pane.hidden=false;selectedSwap=null;paintSwapSelection();});
  async function leave(){pauseAll();pane.hidden=true;document.body.classList.remove('remixDraftMode');$('#remixPanel').hidden=false;remixBatch=await api('remixGet',batchId);await loadRemix();}
  $r('rxBack').onclick=()=>task(leave);const repairCopyrightButton=document.createElement('button');repairCopyrightButton.textContent='Để trống clip bị chặn';$r('rxSettings').after(repairCopyrightButton);repairCopyrightButton.onclick=()=>saveEdit('repairCopyright');
  const settingsDialog=document.createElement('dialog');settingsDialog.id='rxSettingsDialog';document.body.append(settingsDialog);
@@ -54,6 +54,19 @@
  function pauseAll(){for(const stop of sfxStops)stop();sfxStops=[];pane.querySelectorAll('video,audio').forEach(v=>v.pause());$r('rxVideo').pause();}
  const allUnits=()=>[...doc.blocks.flatMap(b=>b.units),...(doc.ending?[doc.ending]:[])];
  function card(u){if(u.empty)return `<article class="rxCard rxEmpty" data-unit="${esc(u.id)}"><div class="rxEmptyContent"><span>＋</span><strong>Vị trí trống</strong><small>${esc(u.reason||'Chưa có footage')}</small></div><div class="rxRail"><button data-replace="${esc(u.id)}" title="Chọn clip bù cùng vị trí">＋</button><button data-swap="${esc(u.id)}" title="Đổi chỗ với footage khác">⇄</button><button data-remove="${esc(u.id)}" title="Bỏ ô trống">×</button></div></article>`;return `<article class="rxCard" data-unit="${esc(u.id)}"><div class="rxThumb"><img alt="Footage" data-rx-thumb="${esc(u.id)}"><small title="${esc(u.name)}">${esc(u.name)}</small><button data-play="${esc(u.id)}" class="rxPlay" title="Phát footage">▶</button><span>${fmt(u.duration)}</span></div><div class="rxRail"><button data-edit="${esc(u.id)}" class="${u.edited?'rxEdited':''}" title="Chỉnh sửa · ${u.parts.length} đoạn">✎</button><button data-replace="${esc(u.id)}" title="Hoán đổi với video khác cùng block">↻</button><button data-swap="${esc(u.id)}" title="Chọn hai cảnh để đổi chỗ">⇄</button><button data-remove="${esc(u.id)}" title="Bỏ khỏi bản nháp">×</button></div></article>`;}
+ function paintSwapSelection(){
+  $r('rxBlocks').querySelectorAll('[data-swap]').forEach(el=>el.classList.toggle('rxEdited',el.dataset.swap===selectedSwap));
+  $r('rxHint').textContent=selectedSwap?'Chọn nút ⇄ ở cảnh thứ hai để đổi chỗ. Bấm lại cảnh đã chọn để hủy.':'';
+ }
+ function paintMusic(){
+  $r('rxStatus').textContent='Đã chỉnh sửa · Đã lưu · '+fmt(doc.duration+(doc.settings.intro?.duration||0));$r('rxUndo').disabled=!doc.canUndo;
+  $r('rxBlocks').querySelectorAll('.rxBlockMusic').forEach((host,i)=>{
+   host.querySelector('small').textContent=doc.assignments.find(a=>a.block===i)?.name||'Chưa gán nhạc';
+   host.querySelectorAll('audio').forEach(a=>{a.pause();a.remove();});
+   const swap=host.querySelector('[data-song-swap]');if(swap)swap.disabled=!doc.assignments.some(a=>a.block===0)||!doc.assignments.some(a=>a.block===i);
+  });
+  $r('rxSongs').innerHTML=doc.assignments.map(a=>`<div class="row"><span>${a.block===0?'Hook':'Block '+a.block}: ${esc(a.name)}</span></div>`).join('')||'Chưa gán nhạc.';
+ }
  function paint(){
   const unitMap=new Map(allUnits().map(u=>[u.id,u]));
   pauseAll();thumbs.disconnect();thumbQueue=[];epoch++;$r('rxName').value=doc.name;$r('rxName').disabled=false;$r('rxStatus').textContent=(doc.installed?'Đã tạo CapCut':doc.edited?'Đã chỉnh sửa · Đã lưu':'Bản nháp · Đã lưu')+' · '+fmt(doc.duration+(doc.settings.intro?.duration||0));$r('rxUndo').disabled=!doc.canUndo;$r('rxBuild').disabled=false;$r('rxBuild').textContent=doc.installed?'XUẤT LẠI CAPCUT':'TẠO DỰ ÁN CAPCUT';
@@ -63,12 +76,12 @@
   $r('rxBlocks').querySelectorAll('[data-play]').forEach(b=>{b.hidden=unitMap.get(b.dataset.play)?.kind==='image';b.onclick=()=>playCard(b.dataset.play,b.closest('.rxThumb'));});
   $r('rxBlocks').querySelectorAll('[data-replace]').forEach(b=>{b.hidden=b.dataset.replace===doc.ending?.id;b.onclick=()=>openPicker(b.dataset.replace);});
   $r('rxBlocks').querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>saveEdit('remove',{unitId:b.dataset.remove}));
-  $r('rxBlocks').querySelectorAll('[data-swap]').forEach(b=>{b.hidden=b.dataset.swap===doc.ending?.id;b.classList.toggle('rxEdited',selectedSwap===b.dataset.swap);b.onclick=()=>{if(!selectedSwap){selectedSwap=b.dataset.swap;paint();}else if(selectedSwap===b.dataset.swap){selectedSwap=null;paint();}else{const first=selectedSwap;selectedSwap=null;saveEdit('swap',{unitId:first,otherId:b.dataset.swap});}};});
+  $r('rxBlocks').querySelectorAll('[data-swap]').forEach(b=>{b.hidden=b.dataset.swap===doc.ending?.id;b.classList.toggle('rxEdited',selectedSwap===b.dataset.swap);b.onclick=()=>{if(!selectedSwap){selectedSwap=b.dataset.swap;paintSwapSelection();}else if(selectedSwap===b.dataset.swap){selectedSwap=null;paintSwapSelection();}else{const first=selectedSwap;selectedSwap=null;saveEdit('swap',{unitId:first,otherId:b.dataset.swap});}};});
   for(const [attr,op,direction] of [['block-up','moveBlock',-1],['block-down','moveBlock',1],['block-delete','removeBlock',0]])$r('rxBlocks').querySelectorAll('[data-'+attr+']').forEach(el=>el.onclick=()=>{if(op==='removeBlock'&&!confirm('Xóa toàn bộ footage và nhạc của block này khỏi bản nháp? Có thể Hoàn tác.'))return;saveEdit(op,{blockId:el.getAttribute('data-'+attr),direction});});
   $r('rxBlocks').querySelectorAll('[data-song-listen]').forEach(el=>el.onclick=async()=>{try{const host=el.closest('.rxBlockMusic');let audio=host.querySelector('audio');if(audio){if(audio.paused){pauseAll();await audio.play();}else audio.pause();return;}const result=await api('remixEditMusicPreview',{...base(),blockId:el.dataset.songListen});if(!el.isConnected)return;pauseAll();audio=document.createElement('audio');audio.controls=true;await setMusicPreview(audio,result);audio.volume=result.volume;host.append(audio);await audio.play();}catch(e){toast(e.message,true);}});
   $r('rxBlocks').querySelectorAll('[data-song-random]').forEach(el=>el.onclick=()=>{const blockId=el.dataset.songRandom,index=doc.blocks.findIndex(b=>b.id===blockId);saveEdit('blockMusic',{blockId,folder:folders[index===0?'hook':'body']});});
   $r('rxBlocks').querySelectorAll('[data-song-swap]').forEach(el=>{const index=doc.blocks.findIndex(b=>b.id===el.dataset.songSwap);el.disabled=!doc.assignments.some(a=>a.block===0)||!doc.assignments.some(a=>a.block===index);el.onclick=()=>saveEdit('swapMusicHook',{blockId:el.dataset.songSwap});});
-  $r('rxBlocks').querySelectorAll('[data-song-choose]').forEach(el=>el.onclick=()=>task(async()=>{const result=await api('remixEditChoose',{...base(),revision:doc.revision,op:'blockMusic',blockId:el.dataset.songChoose});if(result){doc=result;paint();}}));
+  $r('rxBlocks').querySelectorAll('[data-song-choose]').forEach(el=>el.onclick=()=>task(async()=>{const result=await api('remixEditChoose',{...base(),revision:doc.revision,op:'blockMusic',blockId:el.dataset.songChoose});if(result){doc=result;paintMusic();}}));
   $r('rxBlocks').querySelectorAll('[data-song-listen]').forEach(musicButtonLoading);
   $r('rxBlocks').querySelectorAll('.rxBlock').forEach((section,i)=>{if(doc.blocks[i]&&!doc.blocks[i].units.some(u=>!u.empty)&&!(i===doc.blocks.length-1&&doc.ending))section.querySelectorAll('.rxBlockMusic button').forEach(button=>button.disabled=true);});
   if($r('rxImageDuration'))$r('rxImageDuration').onchange=()=>saveEdit('endingDuration',{duration:Number($r('rxImageDuration').value)});
