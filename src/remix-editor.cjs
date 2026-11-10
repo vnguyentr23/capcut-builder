@@ -121,9 +121,27 @@ function swapPeer(store,args){
  for(const x of [p,peer]){const songs=clone(x.assignments);x.editor.revision++;rebuild(x);x.assignments=songs;x.assignments=require('./remix-timing.cjs').assignments(x,x.settings||{});x.editedAt=new Date().toISOString();}
  remix.save(store,b);return present(p,b,store);
 }
+// A local swap edits one project: do not deserialize source timelines or peer undo stacks.
+function loadLocalSwap(store,id,projectId){
+ const row=store.db.prepare(`SELECT updated,summary,json_extract(data,'$.settings') settings,json_extract(data,'$.renderSettings') render_settings,
+ json_extract(data,'$.inheritedHistory') inherited,
+ (SELECT json_group_array(CASE WHEN json_extract(value,'$.id')=? THEN json_object('idx',key,'project',json(value)) ELSE json_object('project',json_object('id',json_extract(value,'$.id'),'name',json_extract(value,'$.name'),'signature',json_extract(value,'$.signature'),'blocks',json_extract(value,'$.blocks'))) END) FROM json_each(data,'$.projects')) projects
+ FROM remix_batches WHERE id=?`).get(projectId,id);
+ if(!row)throw Error('Không tìm thấy bản nháp.');
+ const rows=JSON.parse(row.projects),target=rows.find(r=>r.project.id===projectId);if(!target)throw Error('Không tìm thấy bản nháp.');row.idx=target.idx;
+ const p=target.project;init(p);p.settings=require('./remix-settings.cjs').effective(p,JSON.parse(row.render_settings||row.settings||'{}'));
+ return {b:{id,projects:rows.map(r=>r.project)},p,localSwap:row};
+}
+function saveLocalSwap(store,b,p,row){
+ const updated=new Date().toISOString(),summary=JSON.parse(row.summary);
+ // Keep the same signature history as the regular save path, including other projects.
+ summary.signatures=[...new Set([...JSON.parse(row.inherited||'[]'),...b.projects.map(x=>x.signature)])];
+ const result=store.db.prepare("UPDATE remix_batches SET data=json_set(data,?,json(?),'$.updated',?),updated=?,summary=? WHERE id=? AND updated=?").run('$.projects['+row.idx+']',JSON.stringify(p),updated,updated,JSON.stringify(summary),b.id,row.updated);
+ if(!result.changes)throw Error('Bộ dự án đã thay đổi. Hãy mở lại trước khi hoán đổi.');
+}
 async function mutate(store,args){
  if(args.op==='swapPeer')return swapPeer(store,args);
- const {id,projectId,revision,op}=args,{b,p}=load(store,id,projectId),e=p.editor;
+ const {id,projectId,revision,op}=args,{b,p,localSwap}=op==='swap'?loadLocalSwap(store,id,projectId):load(store,id,projectId),e=p.editor;
  if(revision!==e.revision)throw Error('Bản nháp đã thay đổi. Mở lại trước khi lưu.');
  if(op==='undo'){const last=p.editUndo?.at(-1);if(last?.peerId){const peer=b.projects.find(x=>x.id===last.peerId),other=peer?.editUndo?.at(-1);if(!other||other.pair!==last.pair||peer.installed)throw Error('Video cùng hoán đổi đã thay đổi. Hoàn tác thao tác mới hơn trước.');peer.editUndo.pop();const revision=peer.editor.revision;peer.editor=other.editor;peer.name=other.name;peer.assignments=other.assignments;peer.settings=other.settings;peer.editor.revision=revision+1;const songs=clone(peer.assignments);rebuild(peer);peer.assignments=songs;}const prev=p.editUndo?.pop();if(!prev)throw Error('Không có thao tác để hoàn tác.');p.editor=prev.editor;p.name=prev.name;p.assignments=prev.assignments;p.settings=prev.settings??p.settings;p.editor.revision=e.revision+1;}
  else {
@@ -176,7 +194,7 @@ async function mutate(store,args){
   }else throw Error('Thao tác không hợp lệ.');
   e.revision++;
  }
- if(!['blockMusic','swapMusicHook'].includes(op))rebuild(p);p.editedAt=new Date().toISOString();p.locked=!p.mixUnlocked;remix.save(store,b);return present(p,b,store);
+ if(!['blockMusic','swapMusicHook'].includes(op))rebuild(p);p.editedAt=new Date().toISOString();p.locked=!p.mixUnlocked;if(localSwap)saveLocalSwap(store,b,p,localSwap);else remix.save(store,b);return present(p,b,store);
 }
 function copyForExport(store,id,projectId,existingNames=[]){
  const b=remix.get(store,id),source=b.projects.find(p=>p.id===projectId);if(!source)throw Error('Không tìm thấy dự án.');if(!source.installed)throw Error('Dự án chưa tạo CapCut; hãy chỉnh bản nháp hiện tại.');
