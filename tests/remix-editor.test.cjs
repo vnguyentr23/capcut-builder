@@ -164,3 +164,10 @@ test('Light music preview preserves block timing and invalidates after saving a 
  p.assignments[0].name='Second';remix.save(store,b);assert.equal(remix.musicPreview(store,b.id,p.id).p.assignments[0].name,'Second');
  }finally{store.close();}
 });
+
+test('Blocked footage is marked in presentation without removing clips or changing duration',()=>{
+ const store=new Store(':memory:');try{const state=store.create('Blocked'),p=fixture();edit.init(p);const b={id:uid(),rootId:state.id,channelId:state.id,name:'B',sources:[],projects:[p],settings:defaults()};remix.save(store,b);
+ require('../src/blacklist.cjs').merge(store,[{type:'footage',value:p.editor.blocks[0].units[0].fingerprint,name:'Blocked clip'}]);
+ const shown=edit.open(store,b.id,p.id);assert.equal(shown.blocks[0].units[0].copyrightBlocked,'Blocked clip');assert.equal(shown.blocks[0].units[0].empty,undefined);assert.equal(shown.duration,p.draft.duration/1e6);assert.equal(shown.blocks.flatMap(b=>b.units).length,6);
+ }finally{store.close();}
+});

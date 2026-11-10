@@ -31,12 +31,12 @@ function summary(u){
  const edited=parts.length>1||parts.some(s=>s.start>0||Math.abs(s.end-s.sourceDuration)>.04||s.speed!==1||s.volume!==1||s.audioMode!=='original')||u.segments.some(s=>s.common_keyframes?.length||s.clip?.scale?.x!==1||s.clip?.scale?.y!==1||s.clip?.transform?.x||s.clip?.transform?.y||s.clip?.rotation);
  return {id:u.id,name:u.name,path:u.path,fingerprint:u.fingerprint,kind:u.materials.videos[0]?.type==='photo'?'image':'video',duration:u.segments.reduce((n,s)=>n+s.target_timerange.duration,0)/1e6,parts,edited:edited||!!u.sounds?.length,soundEffects:require('./sound-effects.cjs').describe(u)};
 }
-function present(p,batch){const e=init(p),locations=new Map();
+function present(p,batch,store){const e=init(p),locations=new Map(),blocked=store?require('./blacklist.cjs').matcher(store):()=>null;
  for(const peer of batch?.projects||[]){if(peer.id===p.id)continue;
  const blocks=peer.editor?.blocks||peer.blocks||[];
  blocks.forEach((bl,i)=>{for(const u of bl.units||bl.clips||[]){if(u.empty||!u.fingerprint)continue;const label=peer.name+' · '+(i===0?'Hook':'Body · Block '+i);const list=locations.get(u.fingerprint)||[];if(!list.includes(label))list.push(label);locations.set(u.fingerprint,list);}});
  }
- const show=u=>({...summary(u),otherLocations:locations.get(u.fingerprint)||[]});return {id:p.id,name:p.name,installed:p.installed,revision:e.revision,settings:p.settings,edited:!!p.editedAt,duration:p.draft.duration/1e6,blocks:e.blocks.map((b,i)=>({id:b.id,hook:i===0,units:b.units.map(show)})),ending:e.ending?show(e.ending):null,assignments:p.assignments,canUndo:!!p.editUndo?.length};}
+ const show=u=>({...summary(u),copyrightBlocked:blocked(u)?.name||'',otherLocations:locations.get(u.fingerprint)||[]});return {id:p.id,name:p.name,installed:p.installed,revision:e.revision,settings:p.settings,edited:!!p.editedAt,duration:p.draft.duration/1e6,blocks:e.blocks.map((b,i)=>({id:b.id,hook:i===0,units:b.units.map(show)})),ending:e.ending?show(e.ending):null,assignments:p.assignments,canUndo:!!p.editUndo?.length};}
 function locate(e,id){for(const b of e.blocks){const i=b.units.findIndex(u=>u.id===id);if(i>=0)return {b,i,u:b.units[i]};}if(e.ending?.id===id)return {u:e.ending,ending:true};throw Error('Footage không còn tồn tại.');}
 function rebuild(p){
  const e=init(p),out=clone(p.draft),video=clone(out.tracks.find(t=>t.type==='video'));video.segments=[];
@@ -85,7 +85,7 @@ function setParts(u,parts){
  for(const t of [...u.texts,...u.sounds||[]]){const r=t.segment.target_timerange,first=spans.find(s=>r.start<s.oldEnd)||spans.at(-1),last=spans.find(s=>r.start+r.duration<=s.oldEnd+2)||spans.at(-1);const a=first.newStart+Math.max(0,(r.start-first.oldStart)/Math.max(1,first.oldEnd-first.oldStart))*first.duration,b=last.newStart+Math.min(1,(r.start+r.duration-last.oldStart)/Math.max(1,last.oldEnd-last.oldStart))*last.duration;t.segment.target_timerange={start:Math.round(a),duration:Math.max(1,Math.round(b-a))};}
 }
 function load(store,id,projectId){const b=remix.get(store,id);const p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy bản nháp.');const before=JSON.stringify(p.settings),hadEditor=!!p.editor;init(p);p.settings=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);return {b,p,changed:!hadEditor||before!==JSON.stringify(p.settings)};}
-function open(store,id,projectId){const {b,p,changed}=load(store,id,projectId);if(changed)remix.save(store,b);return present(p,b);}
+function open(store,id,projectId){const {b,p,changed}=load(store,id,projectId);if(changed)remix.save(store,b);return present(p,b,store);}
 const exportedFootage=require('./remix-used.cjs');
 async function candidates(store,id,projectId,unitId){const {b,p}=load(store,id,projectId),at=locate(p.editor,unitId),sources=await remix.analyzeSources(b.sources),exported=exportedFootage(store,b.channelId,b),used=new Set([...(at.b.hook?[]:exported),...(at.b.hook?[]:require('./remix-allocation.cjs').others(b,p.id)),...p.editor.blocks.flatMap(b=>b.units.map(u=>u.fingerprint))]);return sources.flatMap(s=>s.blocks.flatMap((bl,bi)=>bl.units.flatMap((u,slot)=>slot===at.i&&((at.b.hook&&bi===0)||(!at.b.hook&&bi>0&&Math.abs(bi-p.editor.blocks.indexOf(at.b))<=1))&&!used.has(u.identity)&&!require('./blacklist.cjs').matcher(store)(u)?[{usedBefore:exported.has(u.identity),sourceId:s.sourceId,unitId:u.id,name:u.name||path.basename(u.path),path:u.path,sourceName:s.name,block:bi,slot,duration:u.duration/1e6}]:[])));}
 // Pick from current peer drafts, never from stale source timelines.
@@ -116,7 +116,7 @@ function swapPeer(store,args){
  }
  [a.b.units[a.i],z.b.units[z.i]]=[z.u,a.u];
  for(const x of [p,peer]){const songs=clone(x.assignments);x.editor.revision++;rebuild(x);x.assignments=songs;x.assignments=require('./remix-timing.cjs').assignments(x,x.settings||{});x.editedAt=new Date().toISOString();}
- remix.save(store,b);return present(p,b);
+ remix.save(store,b);return present(p,b,store);
 }
 async function mutate(store,args){
  if(args.op==='swapPeer')return swapPeer(store,args);
@@ -126,9 +126,6 @@ async function mutate(store,args){
  else {
   (p.editUndo??=[]).push({editor:clone(e),name:p.name,assignments:clone(p.assignments),settings:clone(p.settings)});p.editUndo=p.editUndo.slice(-5);
   if(op==='settings'){p.settings=require('./remix-settings.cjs').validate(clone(args.settings));if(p.settings.reblockEnabled)reblock(p,p.settings.blockSize);}
-  else if(op==='repairCopyright'){
-   require('./remix-allocation.cjs').reconcile(store,b,new Set([p.id]));
-  }
   else if(op==='moveBlock'||op==='removeBlock'){
 
    const index=e.blocks.findIndex(x=>x.id===args.blockId);
@@ -176,7 +173,7 @@ async function mutate(store,args){
   }else throw Error('Thao tác không hợp lệ.');
   e.revision++;
  }
- if(!['blockMusic','swapMusicHook'].includes(op))rebuild(p);p.editedAt=new Date().toISOString();p.locked=!p.mixUnlocked;remix.save(store,b);return present(p,b);
+ if(!['blockMusic','swapMusicHook'].includes(op))rebuild(p);p.editedAt=new Date().toISOString();p.locked=!p.mixUnlocked;remix.save(store,b);return present(p,b,store);
 }
 function copyForExport(store,id,projectId,existingNames=[]){
  const b=remix.get(store,id),source=b.projects.find(p=>p.id===projectId);if(!source)throw Error('Không tìm thấy dự án.');if(!source.installed)throw Error('Dự án chưa tạo CapCut; hãy chỉnh bản nháp hiện tại.');
@@ -184,6 +181,6 @@ function copyForExport(store,id,projectId,existingNames=[]){
  for(const row of store.db.prepare('SELECT summary FROM remix_batches').all())for(const n of JSON.parse(row.summary).names||[])names.add(n.toLocaleLowerCase());
  for(const row of store.db.prepare('SELECT name FROM projects').all())names.add(row.name.toLocaleLowerCase());
  const base=source.name.replace(/_v\d+$/i,'').slice(0,85);let version=2,name;do{name=base+'_v'+version++;}while(names.has(name.toLocaleLowerCase()));
- const p=clone(source);p.id=uid();p.name=name;p.draft.name=name;p.draft.id=uid();p.installed=null;p.locked=true;p.editUndo=[];p.copiedFrom=source.id;p.editedAt=new Date().toISOString();init(p);p.editor.revision=0;p.settings=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);b.projects.push(p);remix.save(store,b);return present(p,b);
+ const p=clone(source);p.id=uid();p.name=name;p.draft.name=name;p.draft.id=uid();p.installed=null;p.locked=true;p.editUndo=[];p.copiedFrom=source.id;p.editedAt=new Date().toISOString();init(p);p.editor.revision=0;p.settings=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);b.projects.push(p);remix.save(store,b);return present(p,b,store);
 }
 module.exports={reblock,copyForExport,open,load,present,summary,pack,init,rebuild,setParts,mutate,candidates,swapCandidates,locate};
