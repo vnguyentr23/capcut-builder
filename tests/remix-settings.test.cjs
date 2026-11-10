@@ -23,3 +23,15 @@ test('All inherited credit segments export on a single track without changing ti
 test('Remix ducking preserves music continuity, native footage volume and only final fade',async()=>{const p=fixture();p.draft.materials.videos.forEach(m=>m.path=m.id+'.mp4');p.assignments=[{path:'song.mp3',name:'song',sourceDuration:30,start:0,duration:12e6}];p.settings=settings.initial();p.settings.musicAudioMode='original';const seen=[];const d=await remix.prepare(p,{}, {analyzeEnd:async()=>({end:12}),analyze:async c=>{seen.push(c);return c.start===0?[-10]:[-60];}});const songs=d.tracks.find(t=>t.type==='audio').segments;assert.equal(songs.length,2);assert.equal(songs[0].volume,.1);assert(Math.abs(songs[1].volume-10**(-10/20))<1e-10);assert.equal(songs[1].source_timerange.start,5e6);assert.equal(songs[1].target_timerange.start,5e6);assert.equal(songs.at(-1).target_timerange.duration,7e6);assert.equal(d.materials.audio_fades.at(-1).fade_out_duration,4e6);assert.equal(d.tracks[0].segments[0].volume,.4);assert.equal(seen[0].sourceStart,2);p.settings.ducking.enabled=false;let called=false;await remix.prepare(p,{}, {analyzeEnd:async()=>({end:12}),analyze:async()=>{called=true;return [];}});assert.equal(called,false);});
 
 test('Missing Hook credit is backfilled for saved drafts, cleaned filename and existing text preserved',()=>{const p=fixture();p.draft.materials.videos[0].path='Jay Brewer (2).mp4';p.ledger=[{block:1,slot:1,segmentIds:['a']}];p.settings=settings.initial();let d=remix.withMusic(p,{});assert.equal(d.tracks.filter(t=>t.type==='text').length,1);let track=d.tracks.find(t=>t.type==='text');assert.deepEqual(track.segments[0].target_timerange,{start:0,duration:5e6});assert.equal(JSON.parse(d.materials.texts[0].content).text,'Jay Brewer');assert.equal(p.draft.materials.texts.length,0);p.draft=d;d=remix.withMusic(p,{});assert.equal(d.materials.texts.length,1);assert.equal(d.tracks.find(t=>t.type==='text').segments.length,1);});
+
+test('Ending photo and video reset inherited geometry and ignore footage zoom',()=>{
+ for(const type of ['video','photo']){
+ const p=fixture(),seg=p.draft.tracks.find(t=>t.type==='video').segments.at(-1),material=p.draft.materials.videos.find(m=>m.id===seg.material_id);
+ material.type=type;material.width=1080;material.height=1920;
+ seg.clip={scale:{x:1.8,y:1.8},transform:{x:.2,y:-.3},rotation:12,alpha:.7};
+ p.ledger=[{block:0,segmentIds:[seg.id]}];p.settings=settings.initial();p.settings.zoomEnabled=true;p.settings.vertical.scale=1.7;
+ const d=remix.withMusic(p,{}),out=d.tracks.find(t=>t.type==='video').segments.find(s=>s.id===seg.id);
+ assert.deepEqual(out.clip.scale,{x:1,y:1});assert.deepEqual(out.clip.transform,{x:0,y:0});assert.equal(out.clip.rotation,0);assert.equal(out.clip.alpha,1);
+ assert.deepEqual(seg.clip.scale,{x:1.8,y:1.8});
+ }
+});

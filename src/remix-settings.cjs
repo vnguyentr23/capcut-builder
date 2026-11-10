@@ -22,7 +22,12 @@ function validate(s){
 }
 function apply(project,d,s){
  validate(s);const videos=d.tracks.filter(t=>t.type==='video').flatMap(t=>t.segments),mats=new Map((d.materials.videos||[]).map(m=>[m.id,m]));
- if(s.zoomEnabled)for(const seg of videos){const m=mats.get(seg.material_id);if(m.type==='photo'||!m.height||Math.abs(m.width/m.height-9/16)>=.02)continue;seg.clip??={};seg.clip.scale={x:s.vertical.scale,y:s.vertical.scale};seg.uniform_scale={on:true,value:1};seg.common_keyframes=(seg.common_keyframes||[]).filter(k=>!/scale/i.test(k.property_type||''));}
+ const endingIds=new Set((project.ledger||[]).filter(row=>row.block===0).flatMap(row=>row.segmentIds||[]));
+ if(s.zoomEnabled)for(const seg of videos){const m=mats.get(seg.material_id);if(endingIds.has(seg.id)||m.type==='photo'||!m.height||Math.abs(m.width/m.height-9/16)>=.02)continue;seg.clip??={};seg.clip.scale={x:s.vertical.scale,y:s.vertical.scale};seg.uniform_scale={on:true,value:1};seg.common_keyframes=(seg.common_keyframes||[]).filter(k=>!/scale/i.test(k.property_type||''));}
+ for(const seg of videos)if(endingIds.has(seg.id)){
+  seg.clip={scale:{x:1,y:1},rotation:0,transform:{x:0,y:0},flip:{horizontal:false,vertical:false},alpha:1};seg.uniform_scale={on:true,value:1};
+  seg.common_keyframes=(seg.common_keyframes||[]).filter(k=>!/scale|position|rotation|alpha/i.test(k.property_type||''));
+ }
  if(s.transition.type!=='inherit'){
   const ids=new Set((d.materials.transitions||[]).map(m=>m.id));for(const seg of videos)seg.extra_material_refs=seg.extra_material_refs.filter(id=>!ids.has(id));d.materials.transitions=[];
   if(s.transition.type==='local')for(const b of project.blocks.filter(b=>b.duration>0).slice(0,-1)){const boundary=b.start+b.duration,seg=videos.find(seg=>seg.target_timerange.start+seg.target_timerange.duration===boundary);if(!seg)throw Error('Không tìm thấy ranh giới block.');const r=s.transition.resource,m={id:uid(),type:'transition',name:r.name,effect_id:r.effectId,resource_id:r.resourceId||r.effectId,third_resource_id:'0',source_platform:1,path:r.path.replaceAll('\\','/'),duration:Math.min(Math.round(s.transition.duration*1e6),seg.target_timerange.duration),is_overlap:true,platform:'all',category_id:'100000',category_name:'',request_id:'',is_ai_transition:false,video_path:'',task_id:''};d.materials.transitions.push(m);seg.extra_material_refs.push(m.id);}

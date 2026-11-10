@@ -144,16 +144,16 @@ test('Peer choices exclude locked and duplicate destinations; stale selection ca
  }finally{store.close();}
 });
 
-test('In-project swaps allow reused footage with warning and preserve peer projects',async()=>{
+test('In-project swaps allow reused footage with location badges and preserve peer projects',async()=>{
  const store=new Store(':memory:');try{
  const state=store.create('Free swap'),p=fixture(),peer=fixture();edit.init(p);edit.init(peer);
  peer.editor.blocks[1].units[0].fingerprint=p.editor.blocks[0].units[0].fingerprint;
  const b={id:uid(),rootId:state.id,channelId:state.id,name:'B',sources:[],projects:[p,peer],settings:defaults()};remix.save(store,b);
  const before=structuredClone(peer),hook=p.editor.blocks[0].units[0].id,body=p.editor.blocks[1].units[0].id;
  const result=await edit.mutate(store,{id:b.id,projectId:p.id,revision:0,op:'swap',unitId:hook,otherId:body});
- assert.equal(result.blocks[1].units[0].id,hook);assert.equal(result.blocks[0].units[0].id,body);assert(result.warnings.length>0);
+ assert.equal(result.blocks[1].units[0].id,hook);assert.equal(result.blocks[0].units[0].id,body);assert(result.blocks[1].units[0].otherLocations.some(x=>x.includes(peer.name)));assert.equal(result.warnings,undefined);
  assert.deepEqual(remix.get(store,b.id).projects[1],before);
- const next=await edit.mutate(store,{id:b.id,projectId:p.id,revision:result.revision,op:'swap',unitId:hook,otherId:result.blocks[2].units[0].id});assert(next.warnings.length>0);
+ const next=await edit.mutate(store,{id:b.id,projectId:p.id,revision:result.revision,op:'swap',unitId:hook,otherId:result.blocks[2].units[0].id});assert(next.blocks[2].units[0].otherLocations.length>0);
  await edit.mutate(store,{id:b.id,projectId:p.id,revision:next.revision,op:'undo'});assert.equal(edit.open(store,b.id,p.id).blocks[1].units[0].id,hook);
  }finally{store.close();}
 });
