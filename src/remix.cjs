@@ -6,7 +6,7 @@ const norm=p=>path.resolve(p).replaceAll('\\','/').toLowerCase();
 const hash=x=>crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const read=p=>JSON.parse(fs.readFileSync(p,'utf8').replace(/^\uFEFF/,''));
 const engine=()=>import(pathToFileURL(path.join(__dirname,'remix/engine.mjs')).href);
-function list(store,id){const root=store.get(id).rootNicheId||id;return store.db.prepare('SELECT id,name,channel_id,updated,summary FROM remix_batches WHERE root_id=? ORDER BY updated DESC').all(root).map(r=>{const m=JSON.parse(r.summary);return {id:r.id,name:r.name,channelId:r.channel_id,count:m.count,sourceCount:m.sourceCount,created:m.created,updated:r.updated,sourceBatchId:m.sourceBatchId,inputSourceIds:m.inputSourceIds||[],sourceIds:m.sourceIds||[]};});}
+function list(store,id){const root=store.db.prepare('SELECT root_id FROM channels WHERE id=?').get(id)?.root_id||id;return store.db.prepare('SELECT id,name,channel_id,updated,summary FROM remix_batches WHERE root_id=? ORDER BY updated DESC').all(root).map(r=>{const m=JSON.parse(r.summary);return {id:r.id,name:r.name,channelId:r.channel_id,count:m.count,sourceCount:m.sourceCount,created:m.created,updated:r.updated,sourceBatchId:m.sourceBatchId,inputSourceIds:m.inputSourceIds||[],sourceIds:m.sourceIds||[]};});}
 const batchReadCache=new WeakMap();
 function readCached(store,id){let cache=batchReadCache.get(store);if(!cache){cache=new Map();batchReadCache.set(store,cache);}const meta=store.db.prepare('SELECT updated FROM remix_batches INDEXED BY remix_identity_updated WHERE id=?').get(id);if(!meta)throw Error('Không tìm thấy bộ dự án.');let entry=cache.get(id);if(!entry||entry.updated!==meta.updated){const r=store.db.prepare('SELECT data FROM remix_batches WHERE id=?').get(id);entry={updated:meta.updated,value:JSON.parse(r.data)};cache.clear();cache.set(id,entry);}return entry.value;}
 function get(store,id){const r=store.db.prepare('SELECT data FROM remix_batches WHERE id=?').get(id);if(!r)throw Error('Không tìm thấy bộ dự án.');return JSON.parse(r.data);}
@@ -43,13 +43,16 @@ function musicPreview(store,id,projectId){const b=readCached(store,id),p=b.proje
 
 function save(store,b){batchReadCache.get(store)?.delete(b.id);b.updated=new Date().toISOString();const summary={count:b.projects.length,sourceCount:b.sources.length,created:b.projects.filter(p=>p.installed).length,names:b.projects.map(p=>p.name),sourceBatchId:b.sourceBatchId||null,inputSourceIds:b.inputSourceIds||b.sources.map(s=>s.id),sourceIds:b.sources.map(s=>s.id),signatures:[...new Set([...(b.inheritedHistory||[]),...b.projects.map(p=>p.signature)])]};store.db.prepare('INSERT INTO remix_batches(id,root_id,channel_id,name,data,updated,summary) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated=excluded.updated,name=excluded.name,summary=excluded.summary').run(b.id,b.rootId,b.channelId,b.name,JSON.stringify(b),b.updated,JSON.stringify(summary));return b;}
 function reuseStats(p){const body=p.editor?p.editor.blocks.slice(1).flatMap(b=>b.units).filter(u=>!u.empty).map(u=>u.fingerprint):p.blocks.slice(1).flatMap(b=>b.clips).map(c=>c.fingerprint);if(!Array.isArray(p.sourceBodyHashes))return {reusedPercent:null,reusedCount:null,bodyCount:body.length};const source=new Set(p.sourceBodyHashes),count=body.filter(h=>h&&source.has(h)).length;return {reusedPercent:body.length?Math.round(count*100/body.length):0,reusedCount:count,bodyCount:body.length};}
-async function refreshReuse(store,b){if(!b.projects.some(p=>!Array.isArray(p.sourceBodyHashes)))return;const sources=await analyzeSources(b.sources,b.options);let changed=false;for(const p of b.projects){const matches=sources.filter(s=>p.sourceId?s.sourceId===p.sourceId:s.name===p.sourceName);if(matches.length!==1)continue;p.sourceId=matches[0].sourceId;p.sourceBodyHashes=[...new Set(matches[0].blocks.slice(1).flatMap(b=>b.units.map(u=>u.identity)))];Object.assign(p,reuseStats(p));changed=true;}if(changed)save(store,b);}
+async function refreshReuse(store,b){if(!b.projects.some(p=>!Array.isArray(p.sourceBodyHashes)))return;// Opening the batch must not hash original footage from disk.
+const complete=b.sources.every(src=>(src.draft.materials?.videos||[]).every(m=>!m.path||src.fingerprints?.[norm(m.path)]));
+if(!complete)return;
+const sources=await analyzeSources(b.sources,b.options,false);let changed=false;for(const p of b.projects){const matches=sources.filter(s=>p.sourceId?s.sourceId===p.sourceId:s.name===p.sourceName);if(matches.length!==1)continue;p.sourceId=matches[0].sourceId;p.sourceBodyHashes=[...new Set(matches[0].blocks.slice(1).flatMap(b=>b.units.map(u=>u.identity)))];Object.assign(p,reuseStats(p));changed=true;}if(changed)save(store,b);}
 function present(b){return {...b,sources:b.sources.map(s=>({id:s.id,name:s.name})),projects:b.projects.map(p=>({id:p.id,name:p.name,locked:p.locked,mixUnlocked:!!p.mixUnlocked,installed:p.installed,editedAt:p.editedAt,sourceName:p.sourceName,signature:p.signature,...reuseStats(p),blocks:p.blocks,assignments:p.assignments,draft:{duration:p.draft.duration}})),assetManifest:!!b.assetManifest};}
 function sourceProjects(store,id){
- const root=store.get(id).rootNicheId||id;
+ const root=store.db.prepare('SELECT root_id FROM channels WHERE id=?').get(id)?.root_id||id;
  const latest=new Map();
  // History is newest first. Draft saves never replace the last CapCut version.
- for(const project of store.history(root)){
+ for(const project of store.db.prepare('SELECT id,name,status,path,created_at FROM projects WHERE niche_id=? ORDER BY created_at DESC').all(root)){
   if(!['IMPORTED','CREATED'].includes(project.status))continue;
   const key=project.name.trim().replace(/[_\s]+/g,' ').toLocaleLowerCase();
   if(!latest.has(key))latest.set(key,{...project,channel:'Kênh gốc'});
@@ -57,8 +60,8 @@ function sourceProjects(store,id){
  return [...latest.values()].sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
 }
 function signature(blocks){return hash(blocks.slice(1).flatMap(b=>b.units.map(u=>u.identity)));}
-async function analyzeSources(sources,options={}){
- const e=await engine();for(const src of sources){src.fingerprints??={};for(const m of src.draft.materials?.videos||[])if(m.path&&!src.fingerprints[norm(m.path)]&&fs.existsSync(m.path))src.fingerprints[norm(m.path)]=await require('./media.cjs').hash(m.path);}
+async function analyzeSources(sources,options={},hashMissing=true){
+ const e=await engine();for(const src of sources){src.fingerprints??={};for(const m of src.draft.materials?.videos||[])if(hashMissing&&m.path&&!src.fingerprints[norm(m.path)]&&fs.existsSync(m.path))src.fingerprints[norm(m.path)]=await require('./media.cjs').hash(m.path);}
  return sources.map(src=>{
   const a=e.analyze(structuredClone(src.draft),src.name,src.id,src.path);a.meta=src.meta;
   // A terminal image is an ending, never a randomly distributed body slot.
@@ -201,15 +204,18 @@ async function addToSource(store,{id,stateId,sourceIds}){
  batch.sources.push(...captured);
  return save(store,batch);
 }
-function sourceUpdate(store,batch){
+function sourceUpdate(store,batch,metadataOnly=false){
+ const projection=metadataOnly
+  ? "json_object('id',id,'name',name,'projects',json('[]'),'originPackageId',json_extract(data,'$.originPackageId'),'sources',json((SELECT json_group_array(json_object('id',json_extract(value,'$.id'),'name',json_extract(value,'$.name'))) FROM json_each(remix_batches.data,'$.sources')))) AS data"
+  : 'data';
  let source;
  if(batch.sourceBatchId){
-  const row=store.db.prepare('SELECT data FROM remix_batches WHERE id=? AND root_id=?').get(batch.sourceBatchId,batch.rootId);
+  const row=store.db.prepare('SELECT '+projection+" FROM remix_batches WHERE id=? AND root_id=? AND json_extract(summary,'$.count')=0").get(batch.sourceBatchId,batch.rootId);
   if(row){const direct=JSON.parse(row.data);if(!direct.projects.length)source=direct;}
  }
  if(!source){
   const ids=batch.inputSourceIds||batch.sources.map(s=>s.id);
-  const candidates=store.db.prepare("SELECT data FROM remix_batches WHERE root_id=? AND json_extract(summary,'$.count')=0").all(batch.rootId).map(r=>JSON.parse(r.data));
+  const candidates=store.db.prepare("SELECT "+projection+" FROM remix_batches WHERE root_id=? AND json_extract(summary,'$.count')=0").all(batch.rootId).map(r=>JSON.parse(r.data));
   const imported=batch.sourceBatchId?candidates.filter(b=>b.originPackageId===batch.sourceBatchId):[];
   const matches=imported.length?imported:candidates.filter(b=>ids.length&&ids.every(id=>b.sources.some(s=>s.id===id)));
   if(matches.length!==1)return null;
