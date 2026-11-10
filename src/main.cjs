@@ -215,6 +215,11 @@ app.whenReady().then(async()=>{
   if(smoke){
     try{
       await new Promise(r=>setTimeout(r,1200));
+      if(process.env.CCB_REMIX_OPEN_TEST==='1'){
+        const result=await win.webContents.executeJavaScript(fs.readFileSync(path.join(base,'tests','remix-open-ui.js'),'utf8'));
+        fs.writeFileSync(path.join(data,'remix-open-ui.json'),JSON.stringify(result,null,2));
+        if(!result.ok)throw Error(result.error);
+      }
       if(process.env.CCB_REMIX_SETTINGS_TEST==='1'){
         const result=await win.webContents.executeJavaScript(fs.readFileSync(path.join(base,'tests','remix-settings-ui.js'),'utf8'));
         fs.writeFileSync(path.join(data,'settings-ui.json'),JSON.stringify(result,null,2));
