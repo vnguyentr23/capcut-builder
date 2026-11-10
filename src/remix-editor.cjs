@@ -115,7 +115,7 @@ function swapPeer(store,args){
 }
 async function mutate(store,args){
  if(args.op==='swapPeer')return swapPeer(store,args);
- const {id,projectId,revision,op}=args,{b,p}=load(store,id,projectId),e=p.editor;
+ const {id,projectId,revision,op}=args,{b,p}=load(store,id,projectId),e=p.editor,warnings=[];
  if(revision!==e.revision)throw Error('Bản nháp đã thay đổi. Mở lại trước khi lưu.');
  if(op==='undo'){const last=p.editUndo?.at(-1);if(last?.peerId){const peer=b.projects.find(x=>x.id===last.peerId),other=peer?.editUndo?.at(-1);if(!other||other.pair!==last.pair||peer.installed)throw Error('Video cùng hoán đổi đã thay đổi. Hoàn tác thao tác mới hơn trước.');peer.editUndo.pop();const revision=peer.editor.revision;peer.editor=other.editor;peer.name=other.name;peer.assignments=other.assignments;peer.settings=other.settings;peer.editor.revision=revision+1;const songs=clone(peer.assignments);rebuild(peer);peer.assignments=songs;}const prev=p.editUndo?.pop();if(!prev)throw Error('Không có thao tác để hoàn tác.');p.editor=prev.editor;p.name=prev.name;p.assignments=prev.assignments;p.settings=prev.settings??p.settings;p.editor.revision=e.revision+1;}
  else {
@@ -157,7 +157,7 @@ async function mutate(store,args){
   else if(op==='parts'){const u=locate(e,args.unitId).u;setParts(u,args.parts);if(args.soundEffects)require('./sound-effects.cjs').set(u,args.soundEffects);}
   else if(op==='endingDuration'){if(!e.ending||summary(e.ending).kind!=='image'||!Number.isFinite(args.duration)||args.duration<.1||args.duration>86400)throw Error('Thời lượng ảnh không hợp lệ.');const n=Math.round(args.duration*1e6);e.ending.segments[0].target_timerange={start:0,duration:n};e.ending.segments[0].source_timerange={start:0,duration:n};e.ending.materials.videos[0].duration=n;}
   else if(op==='remove'){const at=locate(e,args.unitId);if(at.ending)e.ending=null;else{if(at.b.units.length===1)throw Error('Block cần ít nhất một footage; dùng Thay cảnh.');at.b.units.splice(at.i,1);}}
-  else if(op==='swap'){const a=locate(e,args.unitId),z=locate(e,args.otherId);if(a.ending||z.ending)throw Error('Không hoán đổi phần kết thúc.');const used=require('./remix-allocation.cjs').others(b,p.id),exported=exportedFootage(store,b.channelId,b);for(const [target,u]of [[a,z.u],[z,a.u]])if(!target.b.hook&&!u.empty&&(used.has(u.fingerprint)||(exported.has(u.fingerprint)&&!(p.installed&&p.editor.blocks.slice(1).some(bl=>bl.units.some(v=>v.fingerprint===u.fingerprint))))))throw Error('Footage này đã được dùng ở Body video khác hoặc đã xuất.');[a.b.units[a.i],z.b.units[z.i]]=[z.u,a.u];}
+  else if(op==='swap'){const a=locate(e,args.unitId),z=locate(e,args.otherId);if(a.ending||z.ending)throw Error('Không hoán đổi phần kết thúc.');const used=require('./remix-allocation.cjs').others(b,p.id),exported=exportedFootage(store,b.channelId,b);for(const [target,u]of [[a,z.u],[z,a.u]])if(!target.b.hook&&!u.empty&&(used.has(u.fingerprint)||(exported.has(u.fingerprint)&&!(p.installed&&p.editor.blocks.slice(1).some(bl=>bl.units.some(v=>v.fingerprint===u.fingerprint))))))warnings.push('“'+u.name+'” đã dùng ở Body video khác hoặc đã xuất. Vẫn đã hoán đổi theo lựa chọn của bạn.');[a.b.units[a.i],z.b.units[z.i]]=[z.u,a.u];}
   else if(op==='replace'){
    const allowed=await candidates(store,id,projectId,args.unitId);if(!allowed.some(c=>c.sourceId===args.sourceId&&c.unitId===args.sourceUnitId))throw Error('Cảnh thay phải cùng vị trí trong block, chưa có trong video; riêng Body không dùng footage đã tạo CapCut của kênh này.');
    const sources=await remix.analyzeSources(b.sources),s=sources.find(s=>s.sourceId===args.sourceId),u=s.blocks.flatMap(b=>b.units).find(u=>u.id===args.sourceUnitId),at=locate(e,args.unitId);at.b.units[at.i]=pack(s.draft,u.segments,u.identity,u.name);
@@ -170,7 +170,7 @@ async function mutate(store,args){
   }else throw Error('Thao tác không hợp lệ.');
   e.revision++;
  }
- if(!['blockMusic','swapMusicHook'].includes(op))rebuild(p);p.editedAt=new Date().toISOString();p.locked=!p.mixUnlocked;remix.save(store,b);return present(p);
+ if(!['blockMusic','swapMusicHook'].includes(op))rebuild(p);p.editedAt=new Date().toISOString();p.locked=!p.mixUnlocked;remix.save(store,b);return {...present(p),warnings};
 }
 function copyForExport(store,id,projectId,existingNames=[]){
  const b=remix.get(store,id),source=b.projects.find(p=>p.id===projectId);if(!source)throw Error('Không tìm thấy dự án.');if(!source.installed)throw Error('Dự án chưa tạo CapCut; hãy chỉnh bản nháp hiện tại.');

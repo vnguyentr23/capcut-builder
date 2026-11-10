@@ -11,7 +11,7 @@
  const $r=id=>document.getElementById(id),base=()=>({id:batchId,projectId:doc.id}),payload=()=>({...base(),revision:doc.revision});let folders={};
  async function task(fn,label='Đang xử lý bản nháp…'){if(pending||busy)return;pending=true;pane.inert=true;try{return await run(label,fn);}finally{pending=false;pane.inert=false;}}
 
- async function saveEdit(op,values={}){return task(async()=>{doc=await api('remixEditSave',{...payload(),op,...values});paint();toast('Đã lưu bản nháp.');return true;},op==='blockMusic'?'Đang chọn và đổi nhạc…':'Đang lưu bản nháp…');}
+ async function saveEdit(op,values={}){return task(async()=>{doc=await api('remixEditSave',{...payload(),op,...values});paint();toast(doc.warnings?.length?'⚠ '+doc.warnings.join(' '):'Đã lưu bản nháp.');return true;},op==='blockMusic'?'Đang chọn và đổi nhạc…':'Đang lưu bản nháp…');}
  window.openRemixEditor=(id,projectId)=>task(async()=>{stopFootage();toggleSettings(false);batchId=id;mediaCache.clear();doc=await api('remixEditOpen',{id,projectId});folders={...remixBatch?.musicFolders};document.body.classList.add('remixDraftMode','remixMode');$('#remixPanel').hidden=true;pane.hidden=false;selectedSwap=null;paint();});
  async function leave(){pauseAll();pane.hidden=true;document.body.classList.remove('remixDraftMode');$('#remixPanel').hidden=false;remixBatch=await api('remixGet',batchId);await loadRemix();}
  $r('rxBack').onclick=()=>task(leave);const repairCopyrightButton=document.createElement('button');repairCopyrightButton.textContent='Để trống clip bị chặn';$r('rxSettings').after(repairCopyrightButton);repairCopyrightButton.onclick=()=>saveEdit('repairCopyright');
