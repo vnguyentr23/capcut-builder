@@ -104,7 +104,10 @@ function peerChoices(store,b,p,unitId){
  }
  return result;
 }
-function swapCandidates(store,id,projectId,unitId){const {b,p,changed}=load(store,id,projectId),needsInit=b.projects.some(x=>!x.editor),rows=peerChoices(store,b,p,unitId);if(changed||needsInit)remix.save(store,b);return rows;}
+function swapCandidates(store,id,projectId,unitId){const {b,p,changed}=load(store,id,projectId),needsInit=b.projects.some(x=>!x.editor),rows=peerChoices(store,b,p,unitId);if(changed||needsInit)remix.save(store,b);
+ // Historical display marker is independent of eligibility/reopened export reservations.
+ const exported=exportedFootage(store,b.channelId);
+ return rows.map(c=>({...c,exportedBefore:exported.has(c.fingerprint)}));}
 function swapPeer(store,args){
  const {b,p}=load(store,args.id,args.projectId);
  if(p.editor.revision!==args.revision)throw Error('Bản nháp đã thay đổi. Mở lại trước khi lưu.');

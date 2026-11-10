@@ -171,3 +171,14 @@ test('Blocked footage is marked in presentation without removing clips or changi
  const shown=edit.open(store,b.id,p.id);assert.equal(shown.blocks[0].units[0].copyrightBlocked,'Blocked clip');assert.equal(shown.blocks[0].units[0].empty,undefined);assert.equal(shown.duration,p.draft.duration/1e6);assert.equal(shown.blocks.flatMap(b=>b.units).length,6);
  }finally{store.close();}
 });
+
+test('Swap picker marks exported copies while retaining eligible unexported peers',()=>{
+ const store=new Store(':memory:');try{
+ const state=store.create('Export marker'),p=fixture(),peer=fixture(),done=fixture();
+ for(const x of [peer,done])for(const bl of x.blocks)for(const c of bl.clips)c.fingerprint='d'+c.fingerprint.slice(1);
+ done.installed={path:'capcut'};done.mixUnlocked=true;done.locked=false;
+ const b={id:uid(),rootId:state.id,channelId:state.id,name:'B',sources:[],projects:[p,peer,done],settings:defaults()};remix.save(store,b);
+ const shown=edit.open(store,b.id,p.id);
+ for(const index of [0,1]){const rows=edit.swapCandidates(store,b.id,p.id,shown.blocks[index].units[0].id);assert.equal(rows.length,2);assert(rows.every(c=>c.peerId===peer.id&&c.exportedBefore));}
+ }finally{store.close();}
+});
