@@ -83,10 +83,41 @@ function load(store,id,projectId){const b=remix.get(store,id);const p=b.projects
 function open(store,id,projectId){const {b,p,changed}=load(store,id,projectId);if(changed)remix.save(store,b);return present(p);}
 const exportedFootage=require('./remix-used.cjs');
 async function candidates(store,id,projectId,unitId){const {b,p}=load(store,id,projectId),at=locate(p.editor,unitId),sources=await remix.analyzeSources(b.sources),exported=exportedFootage(store,b.channelId,b),used=new Set([...(at.b.hook?[]:exported),...(at.b.hook?[]:require('./remix-allocation.cjs').others(b,p.id)),...p.editor.blocks.flatMap(b=>b.units.map(u=>u.fingerprint))]);return sources.flatMap(s=>s.blocks.flatMap((bl,bi)=>bl.units.flatMap((u,slot)=>slot===at.i&&((at.b.hook&&bi===0)||(!at.b.hook&&bi>0&&Math.abs(bi-p.editor.blocks.indexOf(at.b))<=1))&&!used.has(u.identity)&&!require('./blacklist.cjs').matcher(store)(u)?[{usedBefore:exported.has(u.identity),sourceId:s.sourceId,unitId:u.id,name:u.name||path.basename(u.path),path:u.path,sourceName:s.name,block:bi,slot,duration:u.duration/1e6}]:[])));}
+// Pick from current peer drafts, never from stale source timelines.
+function peerChoices(store,b,p,unitId){
+ const at=locate(init(p),unitId);if(at.ending)return [];
+ const bi=p.editor.blocks.indexOf(at.b),used=new Set([...p.editor.blocks.flatMap(bl=>bl.units.filter(u=>!u.empty).map(u=>u.fingerprint)),p.editor.ending?.fingerprint].filter(Boolean)),blocked=require('./blacklist.cjs').matcher(store);
+ const result=[];
+ for(const peer of b.projects){
+  if(peer.id===p.id||peer.installed||peer.locked)continue;
+  const e=init(peer),bl=e.blocks[bi];if(!bl)continue;
+  for(const [slot,u] of bl.units.entries()){
+   if(u.empty||used.has(u.fingerprint)||blocked(u))continue;
+   if(!at.u.empty&&(e.ending?.fingerprint===at.u.fingerprint||e.blocks.some(x=>x.units.some(v=>v.id!==u.id&&!v.empty&&v.fingerprint===at.u.fingerprint))))continue;
+   result.push({...summary(u),unitId:u.id,peerId:peer.id,peerRevision:e.revision,sourceName:peer.name,block:bi,slot});
+  }
+ }
+ return result;
+}
+function swapCandidates(store,id,projectId,unitId){const {b,p,changed}=load(store,id,projectId),needsInit=b.projects.some(x=>!x.editor),rows=peerChoices(store,b,p,unitId);if(changed||needsInit)remix.save(store,b);return rows;}
+function swapPeer(store,args){
+ const {b,p}=load(store,args.id,args.projectId);
+ if(p.editor.revision!==args.revision)throw Error('Bản nháp đã thay đổi. Mở lại trước khi lưu.');
+ const c=peerChoices(store,b,p,args.unitId).find(c=>c.peerId===args.peerId&&c.unitId===args.otherId);
+ if(!c||c.peerRevision!==args.peerRevision)throw Error('Clip hoặc video đã thay đổi. Hãy mở lại danh sách.');
+ const peer=b.projects.find(x=>x.id===c.peerId),a=locate(p.editor,args.unitId),z=locate(peer.editor,c.unitId),pair=uid();
+ for(const [x,y] of [[p,peer],[peer,p]]){
+  (x.editUndo??=[]).push({editor:clone(x.editor),name:x.name,assignments:clone(x.assignments),settings:clone(x.settings),peerId:y.id,pair});x.editUndo=x.editUndo.slice(-5);
+ }
+ [a.b.units[a.i],z.b.units[z.i]]=[z.u,a.u];
+ for(const x of [p,peer]){const songs=clone(x.assignments);x.editor.revision++;rebuild(x);x.assignments=songs;x.assignments=require('./remix-timing.cjs').assignments(x,x.settings||{});x.editedAt=new Date().toISOString();}
+ remix.save(store,b);return present(p);
+}
 async function mutate(store,args){
+ if(args.op==='swapPeer')return swapPeer(store,args);
  const {id,projectId,revision,op}=args,{b,p}=load(store,id,projectId),e=p.editor;
  if(revision!==e.revision)throw Error('Bản nháp đã thay đổi. Mở lại trước khi lưu.');
- if(op==='undo'){const prev=p.editUndo?.pop();if(!prev)throw Error('Không có thao tác để hoàn tác.');p.editor=prev.editor;p.name=prev.name;p.assignments=prev.assignments;p.settings=prev.settings??p.settings;p.editor.revision=e.revision+1;}
+ if(op==='undo'){const last=p.editUndo?.at(-1);if(last?.peerId){const peer=b.projects.find(x=>x.id===last.peerId),other=peer?.editUndo?.at(-1);if(!other||other.pair!==last.pair||peer.installed)throw Error('Video cùng hoán đổi đã thay đổi. Hoàn tác thao tác mới hơn trước.');peer.editUndo.pop();const revision=peer.editor.revision;peer.editor=other.editor;peer.name=other.name;peer.assignments=other.assignments;peer.settings=other.settings;peer.editor.revision=revision+1;const songs=clone(peer.assignments);rebuild(peer);peer.assignments=songs;}const prev=p.editUndo?.pop();if(!prev)throw Error('Không có thao tác để hoàn tác.');p.editor=prev.editor;p.name=prev.name;p.assignments=prev.assignments;p.settings=prev.settings??p.settings;p.editor.revision=e.revision+1;}
  else {
   (p.editUndo??=[]).push({editor:clone(e),name:p.name,assignments:clone(p.assignments),settings:clone(p.settings)});p.editUndo=p.editUndo.slice(-5);
   if(op==='settings'){p.settings=require('./remix-settings.cjs').validate(clone(args.settings));if(p.settings.reblockEnabled)reblock(p,p.settings.blockSize);}
@@ -149,4 +180,4 @@ function copyForExport(store,id,projectId,existingNames=[]){
  const base=source.name.replace(/_v\d+$/i,'').slice(0,85);let version=2,name;do{name=base+'_v'+version++;}while(names.has(name.toLocaleLowerCase()));
  const p=clone(source);p.id=uid();p.name=name;p.draft.name=name;p.draft.id=uid();p.installed=null;p.locked=true;p.editUndo=[];p.copiedFrom=source.id;p.editedAt=new Date().toISOString();init(p);p.editor.revision=0;p.settings=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);b.projects.push(p);remix.save(store,b);return present(p);
 }
-module.exports={reblock,copyForExport,open,load,present,summary,pack,init,rebuild,setParts,mutate,candidates,locate};
+module.exports={reblock,copyForExport,open,load,present,summary,pack,init,rebuild,setParts,mutate,candidates,swapCandidates,locate};

@@ -113,3 +113,33 @@ test('Opening, editing and failed export never erase conflicting footage in any 
   assert.deepEqual(remix.get(store,b.id),before);
  }finally{store.close();}
 });
+
+test('Peer grid uses exact block including Hook; swaps native units and paired undo without touching exported drafts',async()=>{
+ const store=new Store(':memory:');try{
+ const state=store.create('Grid'),p=fixture(),peer=fixture(),done=fixture();
+ for(const [i,x] of [peer,done].entries())for(const bl of x.blocks)for(const c of bl.clips)c.fingerprint=String(i+8)+c.fingerprint.slice(1);
+ done.installed={path:'exported'};const b={id:uid(),rootId:state.id,channelId:state.id,name:'Grid',sources:[],projects:[p,peer,done],settings:defaults()};remix.save(store,b);
+ const shown=edit.open(store,b.id,p.id),id=shown.blocks[1].units[0].id;
+ const choices=edit.swapCandidates(store,b.id,p.id,id);assert.equal(choices.length,2);assert(choices.every(c=>c.peerId===peer.id&&c.block===1));
+ assert.equal(edit.swapCandidates(store,b.id,p.id,shown.blocks[0].units[0].id).length,2);
+ const before=remix.get(store,b.id),c=choices[1];
+ const changed=await edit.mutate(store,{id:b.id,projectId:p.id,revision:shown.revision,op:'swapPeer',unitId:id,peerId:c.peerId,otherId:c.unitId,peerRevision:c.peerRevision});
+ const after=remix.get(store,b.id);assert.equal(changed.blocks[1].units[0].id,c.unitId);assert.equal(after.projects[1].editor.blocks[1].units[1].id,id);assert.deepEqual(after.projects[2],before.projects[2]);
+ assert.deepEqual(after.projects[0].editor.blocks[1].units[0].segments,edit.init(before.projects[1]).blocks[1].units[1].segments);
+ await edit.mutate(store,{id:b.id,projectId:p.id,revision:changed.revision,op:'undo'});
+ const undone=remix.get(store,b.id);assert.equal(undone.projects[0].editor.blocks[1].units[0].id,id);assert.equal(undone.projects[1].editor.blocks[1].units[1].id,c.unitId);
+ }finally{store.close();}
+});
+
+test('Peer choices exclude locked and duplicate destinations; stale selection cannot mutate either draft',async()=>{
+ const store=new Store(':memory:');try{
+ const state=store.create('Filters'),p=fixture(),peer=fixture();for(const bl of peer.blocks)for(const c of bl.clips)c.fingerprint='b'+c.fingerprint.slice(1);
+ edit.init(p);edit.init(peer);peer.editor.blocks[1].units[0].fingerprint=p.editor.blocks[0].units[0].fingerprint;
+ const b={id:uid(),rootId:state.id,channelId:state.id,name:'B',sources:[],projects:[p,peer],settings:defaults()};remix.save(store,b);
+ const id=p.editor.blocks[1].units[0].id,rows=edit.swapCandidates(store,b.id,p.id,id);assert.equal(rows.length,1);
+ const before=store.db.prepare('SELECT data FROM remix_batches WHERE id=?').get(b.id).data;
+ await assert.rejects(edit.mutate(store,{id:b.id,projectId:p.id,revision:0,op:'swapPeer',unitId:id,peerId:peer.id,otherId:rows[0].unitId,peerRevision:99}),/đã thay đổi/);
+ assert.equal(store.db.prepare('SELECT data FROM remix_batches WHERE id=?').get(b.id).data,before);
+ peer.locked=true;remix.save(store,b);assert.equal(edit.swapCandidates(store,b.id,p.id,id).length,0);
+ }finally{store.close();}
+});

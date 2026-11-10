@@ -51,7 +51,7 @@ app.whenReady().then(async()=>{
     remixDelete:async(p)=>remix.removeBatch(store,p),
     remixEditOpen:async({id,projectId})=>require('./remix-editor.cjs').open(store,id,projectId),
     remixEditSave:async(p)=>require('./remix-editor.cjs').mutate(store,p),
-    remixEditCandidates:async({id,projectId,unitId})=>require('./remix-editor.cjs').candidates(store,id,projectId,unitId),
+    remixEditCandidates:async({id,projectId,unitId})=>require('./remix-editor.cjs').swapCandidates(store,id,projectId,unitId),
     remixEditMedia:async({id,projectId,unitId,sourceId,sourceUnitId})=>{
       const edit=require('./remix-editor.cjs');let file;
       if(sourceId){const {b}=edit.load(store,id,projectId);const sources=await remix.analyzeSources(b.sources);file=sources.find(s=>s.sourceId===sourceId)?.blocks.flatMap(b=>b.units).find(u=>u.id===sourceUnitId)?.path;}
