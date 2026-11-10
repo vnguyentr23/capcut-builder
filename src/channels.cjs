@@ -50,6 +50,24 @@ function create(store,id,name){
  delete s.importSource;
  const nested=store.db.isTransaction;if(!nested)store.db.exec('BEGIN IMMEDIATE');try{store.db.prepare('INSERT INTO channels VALUES(?,?,?)').run(s.id,root,name);store.nameDraft(s);store.save(s);if(!nested)store.db.exec('COMMIT');}catch(e){if(!nested)store.db.exec('ROLLBACK');throw e;}return s;
 }
+function rename(store,id,name){
+ name=String(name||'').trim();
+ if(!name||fixName(name)!==name)throw Error('Tên kênh không hợp lệ.');
+ const current=store.db.prepare('SELECT * FROM channels WHERE id=?').get(id);
+ if(!current)throw Error('Không tìm thấy kênh.');
+ if(current.id===current.root_id)throw Error('Kênh gốc là mục mặc định.');
+ const rows=store.db.prepare('SELECT * FROM channels').all();
+ const oldKey=current.name.toLocaleLowerCase(),newKey=name.toLocaleLowerCase();
+ if(rows.some(c=>c.name.toLocaleLowerCase()===newKey&&c.name.toLocaleLowerCase()!==oldKey))throw Error('Tên kênh đã tồn tại.');
+ const scope=rows.filter(c=>c.id!==c.root_id&&c.name.toLocaleLowerCase()===oldKey);
+ store.db.exec('BEGIN IMMEDIATE');
+ try{
+  const update=store.db.prepare('UPDATE channels SET name=? WHERE id=?');
+  for(const channel of scope)update.run(name,channel.id);
+  store.db.exec('COMMIT');
+ }catch(error){store.db.exec('ROLLBACK');throw error;}
+ return store.get(id);
+}
 function removalScope(store,id){
  const c=store.db.prepare('SELECT * FROM channels WHERE id=?').get(id);if(!c)throw Error('Không tìm thấy kênh.');if(c.id===c.root_id)throw Error('Không được xóa Kênh gốc.');
  return store.db.prepare('SELECT c.*,n.name AS niche FROM channels c JOIN niches n ON n.id=c.root_id WHERE c.id<>c.root_id ORDER BY n.name').all().filter(row=>row.name.toLocaleLowerCase()===c.name.toLocaleLowerCase());
@@ -69,4 +87,4 @@ function remove(store,selectedId){
  store.pref('active',root);store.db.exec('COMMIT');return root;
  }catch(e){store.db.exec('ROLLBACK');throw e;}
 }
-module.exports={schema,list,headerList,select,decorate,syncLibrary,create,removalScope,remove};
+module.exports={schema,list,headerList,select,decorate,syncLibrary,create,rename,removalScope,remove};

@@ -18,9 +18,19 @@ updateSourceButton.onclick=()=>run('Cập nhật bộ nhân bản…',async()=>{
 });
 
 window.refreshRemixContext=()=>loadRemix();
-window.renderChannels=()=>{const list=window.remixChannels||[];$('#channel').innerHTML=list.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');$('#channel').value=state.id;$('#deleteChannel').disabled=state.id===(state.rootNicheId||state.id);};
+window.renderChannels=()=>{const list=window.remixChannels||[];$('#channel').innerHTML=list.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');$('#channel').value=state.id;$('#renameChannel').disabled=$('#deleteChannel').disabled=state.id===(state.rootNicheId||state.id);};
 $('#channel').onchange=e=>run('Chuyển kênh…',async()=>{accept(await api('channelSwitch',e.target.value));if(!$('#remixPanel').hidden)await loadRemix();});
 async function newChannel(){const name=await ask('Tên kênh mới','','Lịch sử riêng; dùng chung thư viện của ngách.');if(name?.trim())await run('Tạo kênh…',async()=>{accept(await api('channelCreate',{id:state.id,name:name.trim()}));if(!$('#remixPanel').hidden)await loadRemix();});}
+$('#renameChannel').onclick=async()=>{
+ const id=state.id,current=$('#channel').selectedOptions[0]?.textContent||'';
+ const name=await ask('Đổi tên kênh',current,'Áp dụng cho kênh này trên tất cả ngách. Dự án mới dùng tiền tố tên kênh mới.');
+ if(!name?.trim()||name.trim()===current)return;
+ await run('Đổi tên kênh…',async()=>{
+  accept(await api('channelRename',{id,name:name.trim()}));
+  if(!$('#remixPanel').hidden)await loadRemix();
+  toast('Đã đổi tên kênh trên tất cả ngách.');
+ });
+};
 $('#deleteChannel').onclick=async()=>{
  if(busy||state.id===(state.rootNicheId||state.id))return;
  const id=state.id,name=state.channelName;
