@@ -143,7 +143,7 @@ test('Peer choices exclude locked and duplicate destinations; stale selection ca
  const before=store.db.prepare('SELECT data FROM remix_batches WHERE id=?').get(b.id).data;
  await assert.rejects(edit.mutate(store,{id:b.id,projectId:p.id,revision:0,op:'swapPeer',unitId:id,peerId:peer.id,otherId:rows[0].unitId,peerRevision:99}),/đã thay đổi/);
  assert.equal(store.db.prepare('SELECT data FROM remix_batches WHERE id=?').get(b.id).data,before);
- peer.locked=true;remix.save(store,b);assert.equal(edit.swapCandidates(store,b.id,p.id,id).length,0);
+ const fresh=remix.get(store,b.id);fresh.projects.find(x=>x.id===peer.id).locked=true;remix.save(store,fresh);assert.equal(edit.swapCandidates(store,b.id,p.id,id).length,0);
  }finally{store.close();}
 });
 

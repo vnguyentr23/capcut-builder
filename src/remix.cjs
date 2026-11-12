@@ -8,7 +8,8 @@ const read=p=>JSON.parse(fs.readFileSync(p,'utf8').replace(/^\uFEFF/,''));
 const engine=()=>import(pathToFileURL(path.join(__dirname,'remix/engine.mjs')).href);
 function list(store,id){const root=store.db.prepare('SELECT root_id FROM channels WHERE id=?').get(id)?.root_id||id;return store.db.prepare('SELECT id,name,channel_id,updated,summary FROM remix_batches WHERE root_id=? ORDER BY updated DESC').all(root).map(r=>{const m=JSON.parse(r.summary);return {id:r.id,name:r.name,channelId:r.channel_id,count:m.count,sourceCount:m.sourceCount,created:m.created,updated:r.updated,sourceBatchId:m.sourceBatchId,inputSourceIds:m.inputSourceIds||[],sourceIds:m.sourceIds||[]};});}
 const batchReadCache=new WeakMap();
-function get(store,id){const r=store.db.prepare('SELECT data FROM remix_batches WHERE id=?').get(id);if(!r)throw Error('Không tìm thấy bộ dự án.');return JSON.parse(r.data);}
+const loadedVersions=new WeakMap();
+function get(store,id){const r=store.db.prepare('SELECT data FROM remix_batches WHERE id=?').get(id);if(!r)throw Error('Không tìm thấy bộ dự án.');const batch=JSON.parse(r.data);loadedVersions.set(batch,{id,updated:batch.updated});return batch;}
 function upgradeProjectNames(store,batch){
  if(!batch.projects.length)return;
  const workspace=store.get(batch.channelId),base=store.projectNameBase(workspace);
@@ -66,13 +67,15 @@ function musicPreview(store,id,projectId){
 
 function save(store,b){musicReadCache.delete(store);batchReadCache.delete(store);b.updated=new Date().toISOString();const summary={count:b.projects.length,sourceCount:b.sources.length,created:b.projects.filter(p=>p.installed).length,names:b.projects.map(p=>p.name),sourceBatchId:b.sourceBatchId||null,inputSourceIds:b.inputSourceIds||b.sources.map(s=>s.id),sourceIds:b.sources.map(s=>s.id),signatures:[...new Set([...(b.inheritedHistory||[]),...b.projects.map(p=>p.signature)])]};const db=store.db;require('./remix-storage.cjs').transaction(db,()=>{
  const old=db.prepare('SELECT updated FROM remix_batches WHERE id=?').get(b.id);
+ const loaded=loadedVersions.get(b);
+ if(loaded?.id===b.id && old?.updated!==loaded.updated)throw Error('Bộ dự án đã thay đổi. Hãy mở lại trước khi lưu.');
  if(old)b.updated=new Date(Math.max(Date.now(),Date.parse(old.updated)+1)).toISOString();
  const {projects,...header}=b;
  db.prepare('INSERT INTO remix_headers(id,root_id,channel_id,name,data,updated,summary) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated=excluded.updated,name=excluded.name,summary=excluded.summary').run(b.id,b.rootId,b.channelId,b.name,JSON.stringify(header),b.updated,JSON.stringify(summary));
  db.prepare('DELETE FROM remix_projects WHERE batch=?').run(b.id);
  const insert=db.prepare('INSERT INTO remix_projects(batch,position,id,data,updated) VALUES(?,?,?,?,?)');
  projects.forEach((p,index)=>insert.run(b.id,index,p.id,JSON.stringify(p),b.updated));
- });return b;}
+ });loadedVersions.set(b,{id:b.id,updated:b.updated});return b;}
 function reuseStats(p){const body=p.editor?p.editor.blocks.slice(1).flatMap(b=>b.units).filter(u=>!u.empty).map(u=>u.fingerprint):p.blocks.slice(1).flatMap(b=>b.clips).map(c=>c.fingerprint);if(!Array.isArray(p.sourceBodyHashes))return {reusedPercent:null,reusedCount:null,bodyCount:body.length};const source=new Set(p.sourceBodyHashes),count=body.filter(h=>h&&source.has(h)).length;return {reusedPercent:body.length?Math.round(count*100/body.length):0,reusedCount:count,bodyCount:body.length};}
 async function refreshReuse(store,b){if(!b.projects.some(p=>!Array.isArray(p.sourceBodyHashes)))return;// Opening the batch must not hash original footage from disk.
 const complete=b.sources.every(src=>(src.draft.materials?.videos||[]).every(m=>!m.path||src.fingerprints?.[norm(m.path)]));
