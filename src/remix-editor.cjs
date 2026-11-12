@@ -172,7 +172,19 @@ async function mutate(store,args){
    const duration=block.duration-(index===0?Math.min((p.settings?.hookDelay??3)*1e6,block.duration):0);if(duration<=0)throw Error('Hook ngắn hơn độ trễ nhạc đã thiết lập.');
    const media=require('./media.cjs'),old=p.assignments.find(a=>a.block===index),used=new Set(p.assignments.filter(a=>a.block!==index).map(a=>a.fingerprint));let song;
    if(args.path){song=await media.inspect(args.path,store);if(!['.mp3','.wav','.m4a','.aac','.flac','.ogg','.wma'].includes(path.extname(args.path).toLowerCase()))throw Error('Hãy chọn file âm thanh.');}
-   else{const folder=args.folder||b.musicFolders?.[index===0?'hook':'body'];if(!folder)throw Error('Chọn thư mục nhạc trước.');const pool=(await media.scan(folder,'audio',store)).filter(m=>!m.error&&Math.round(m.duration*1e6)>=duration&&!used.has(m.fingerprint)&&m.fingerprint!==old?.fingerprint);if(!pool.length)throw Error('Không có bài khác đủ dài và chưa dùng trong video.');song=pool[crypto.randomInt(pool.length)];}
+   else{
+    const folder=args.folder||b.musicFolders?.[index===0?'hook':'body'];
+    if(!folder)throw Error('Chọn thư mục nhạc trước.');
+    const files=await media.walk(folder,'audio');
+    while(files.length){
+     const pick=crypto.randomInt(files.length),file=files[pick];
+     files[pick]=files[files.length-1];files.pop();
+     let candidate;
+     try{candidate=await media.inspect(file,store);}catch{continue;}
+     if(!candidate.error&&Math.round(candidate.duration*1e6)>=duration&&!used.has(candidate.fingerprint)&&candidate.fingerprint!==old?.fingerprint){song=candidate;break;}
+    }
+    if(!song)throw Error('Không có bài khác đủ dài và chưa dùng trong video.');
+   }
    if(song.error||!song.duration||Math.round(song.duration*1e6)<duration)throw Error('Bài nhạc ngắn hơn block hoặc không đọc được.');if(used.has(song.fingerprint))throw Error('Bài nhạc đã được dùng trong video.');
    p.assignments=p.assignments.filter(a=>a.block!==index);p.assignments.push({block:index,path:song.path,name:song.name,fingerprint:song.fingerprint,sourceDuration:song.duration,start:block.start+(index===0?Math.min((p.settings?.hookDelay??3)*1e6,block.duration):0),duration});p.assignments.sort((a,z)=>a.block-z.block);
   }
