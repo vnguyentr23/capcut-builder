@@ -85,7 +85,7 @@ function setParts(u,parts){
  for(const t of [...u.texts,...u.sounds||[]]){const r=t.segment.target_timerange,first=spans.find(s=>r.start<s.oldEnd)||spans.at(-1),last=spans.find(s=>r.start+r.duration<=s.oldEnd+2)||spans.at(-1);const a=first.newStart+Math.max(0,(r.start-first.oldStart)/Math.max(1,first.oldEnd-first.oldStart))*first.duration,b=last.newStart+Math.min(1,(r.start+r.duration-last.oldStart)/Math.max(1,last.oldEnd-last.oldStart))*last.duration;t.segment.target_timerange={start:Math.round(a),duration:Math.max(1,Math.round(b-a))};}
 }
 function load(store,id,projectId){const b=remix.get(store,id);const p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy bản nháp.');const before=JSON.stringify(p.settings),hadEditor=!!p.editor;init(p);p.settings=require('./remix-settings.cjs').effective(p,b.renderSettings||b.settings);return {b,p,changed:!hadEditor||before!==JSON.stringify(p.settings)};}
-function open(store,id,projectId){const {b,p,changed}=load(store,id,projectId);if(changed)remix.save(store,b);return present(p,b,store);}
+function open(store,id,projectId){const {b,p,changed}=load(store,id,projectId);if(changed)require('./remix-storage.cjs').saveProjects(store,b.id,[p],b.updated);return present(p,b,store);}
 const exportedFootage=require('./remix-used.cjs');
 async function candidates(store,id,projectId,unitId){const {b,p}=load(store,id,projectId),at=locate(p.editor,unitId),sources=await remix.analyzeSources(b.sources),exported=exportedFootage(store,b.channelId,b),used=new Set([...(at.b.hook?[]:exported),...(at.b.hook?[]:require('./remix-allocation.cjs').others(b,p.id)),...p.editor.blocks.flatMap(b=>b.units.map(u=>u.fingerprint))]);return sources.flatMap(s=>s.blocks.flatMap((bl,bi)=>bl.units.flatMap((u,slot)=>slot===at.i&&((at.b.hook&&bi===0)||(!at.b.hook&&bi>0&&Math.abs(bi-p.editor.blocks.indexOf(at.b))<=1))&&!used.has(u.identity)&&!require('./blacklist.cjs').matcher(store)(u)?[{usedBefore:exported.has(u.identity),sourceId:s.sourceId,unitId:u.id,name:u.name||path.basename(u.path),path:u.path,sourceName:s.name,block:bi,slot,duration:u.duration/1e6}]:[])));}
 // Pick from current peer drafts, never from stale source timelines.
@@ -104,14 +104,15 @@ function peerChoices(store,b,p,unitId,includeBlocked=false){
  }
  return result;
 }
-function swapCandidates(store,id,projectId,unitId){const {b,p,changed}=load(store,id,projectId),needsInit=b.projects.some(x=>!x.editor),rows=peerChoices(store,b,p,unitId,true);if(changed||needsInit)remix.save(store,b);
+function swapCandidates(store,id,projectId,unitId){const {b,p,changed}=load(store,id,projectId),uninitialized=b.projects.filter(x=>!x.editor),rows=peerChoices(store,b,p,unitId,true);
+ const initialized=uninitialized.filter(x=>x.editor);if(changed)initialized.push(p);if(initialized.length)require('./remix-storage.cjs').saveProjects(store,b.id,initialized,b.updated);
  // Historical display marker is independent of eligibility/reopened export reservations.
  const exported=exportedFootage.locations(store,b.channelId);
  return rows.map(c=>({...c,exportedBefore:exported.has(c.fingerprint),exportedProjects:exported.get(c.fingerprint)||[]}));}
 function swapPeer(store,args){
- const {b,p}=load(store,args.id,args.projectId);
+ const {b,p}=loadProjectEdit(store,args.id,args.projectId,args.peerId);
  if(p.editor.revision!==args.revision)throw Error('Bản nháp đã thay đổi. Mở lại trước khi lưu.');
- const c=peerChoices(store,b,p,args.unitId).find(c=>c.peerId===args.peerId&&c.unitId===args.otherId);
+ const c=peerChoices(store,{...b,projects:b.projects.filter(x=>x.id===args.peerId)},p,args.unitId).find(c=>c.peerId===args.peerId&&c.unitId===args.otherId);
  if(!c||c.peerRevision!==args.peerRevision)throw Error('Clip hoặc video đã thay đổi. Hãy mở lại danh sách.');
  const peer=b.projects.find(x=>x.id===c.peerId),a=locate(p.editor,args.unitId),z=locate(peer.editor,c.unitId),pair=uid();
  for(const [x,y] of [[p,peer],[peer,p]]){
@@ -119,31 +120,24 @@ function swapPeer(store,args){
  }
  [a.b.units[a.i],z.b.units[z.i]]=[z.u,a.u];
  for(const x of [p,peer]){const songs=clone(x.assignments);x.editor.revision++;rebuild(x);x.assignments=songs;x.assignments=require('./remix-timing.cjs').assignments(x,x.settings||{});x.editedAt=new Date().toISOString();}
- remix.save(store,b);return present(p,b,store);
+ require('./remix-storage.cjs').saveProjects(store,b.id,[p,peer],b.updated);return present(p,b,store);
 }
 // Footage swaps and single-block music edits only update the current project.
-function loadProjectEdit(store,id,projectId){
- const row=store.db.prepare(`SELECT updated,summary,json_extract(data,'$.settings') settings,json_extract(data,'$.renderSettings') render_settings,
- json_extract(data,'$.inheritedHistory') inherited,json_extract(data,'$.musicFolders') folders,
- (SELECT json_group_array(CASE WHEN json_extract(value,'$.id')=? THEN json_object('idx',key,'project',json(value)) ELSE json_object('project',json_object('id',json_extract(value,'$.id'),'name',json_extract(value,'$.name'),'signature',json_extract(value,'$.signature'),'blocks',json_extract(value,'$.blocks'))) END) FROM json_each(data,'$.projects')) projects
- FROM remix_batches WHERE id=?`).get(projectId,id);
- if(!row)throw Error('Không tìm thấy bản nháp.');
- const rows=JSON.parse(row.projects),target=rows.find(r=>r.project.id===projectId);if(!target)throw Error('Không tìm thấy bản nháp.');row.idx=target.idx;
- const p=target.project;init(p);p.settings=require('./remix-settings.cjs').effective(p,JSON.parse(row.render_settings||row.settings||'{}'));
- return {b:{id,musicFolders:JSON.parse(row.folders||'{}'),projects:rows.map(r=>r.project)},p,localRow:row};
-}
-function saveProjectEdit(store,b,p,row){
- const updated=new Date().toISOString(),summary=JSON.parse(row.summary);
- // Keep the same signature history as the regular save path, including other projects.
- summary.signatures=[...new Set([...JSON.parse(row.inherited||'[]'),...b.projects.map(x=>x.signature)])];
- const result=store.db.prepare("UPDATE remix_batches SET data=json_set(data,?,json(?),'$.updated',?),updated=?,summary=? WHERE id=? AND updated=?").run('$.projects['+row.idx+']',JSON.stringify(p),updated,updated,JSON.stringify(summary),b.id,row.updated);
- if(!result.changes)throw Error('Bộ dự án đã thay đổi. Hãy mở lại trước khi lưu.');
+function loadProjectEdit(store,id,projectId,peerId=null){
+ const row=store.db.prepare('SELECT settings,folders FROM remix_edit_config WHERE batch=?').get(id);
+ const updated=store.db.prepare('SELECT updated FROM remix_batches WHERE id=?').get(id)?.updated;
+ const projects=store.db.prepare(`SELECT CASE WHEN id IN (?,?) THEN data ELSE json_object('id',id,'name',name,'blocks',json(blocks)) END data
+ FROM remix_projects WHERE batch=? ORDER BY position`).all(projectId,peerId,id).map(r=>JSON.parse(r.data));
+ const p=projects.find(x=>x.id===projectId);if(!p||!row)throw Error('Không tìm thấy bản nháp.');
+ init(p);p.settings=require('./remix-settings.cjs').effective(p,JSON.parse(row.render_settings||row.settings||'{}'));
+ return {b:{id,updated,musicFolders:JSON.parse(row.folders||'{}'),projects},p};
 }
 async function mutate(store,args){
  if(args.op==='swapPeer')return swapPeer(store,args);
- const {id,projectId,revision,op}=args,{b,p,localRow}=['swap','blockMusic','swapMusicHook'].includes(op)?loadProjectEdit(store,id,projectId):load(store,id,projectId),e=p.editor;
+ const {id,projectId,revision,op}=args,{b,p}=['swap','blockMusic','swapMusicHook'].includes(op)?loadProjectEdit(store,id,projectId):load(store,id,projectId),e=p.editor;
  if(revision!==e.revision)throw Error('Bản nháp đã thay đổi. Mở lại trước khi lưu.');
- if(op==='undo'){const last=p.editUndo?.at(-1);if(last?.peerId){const peer=b.projects.find(x=>x.id===last.peerId),other=peer?.editUndo?.at(-1);if(!other||other.pair!==last.pair||peer.installed)throw Error('Video cùng hoán đổi đã thay đổi. Hoàn tác thao tác mới hơn trước.');peer.editUndo.pop();const revision=peer.editor.revision;peer.editor=other.editor;peer.name=other.name;peer.assignments=other.assignments;peer.settings=other.settings;peer.editor.revision=revision+1;const songs=clone(peer.assignments);rebuild(peer);peer.assignments=songs;}const prev=p.editUndo?.pop();if(!prev)throw Error('Không có thao tác để hoàn tác.');p.editor=prev.editor;p.name=prev.name;p.assignments=prev.assignments;p.settings=prev.settings??p.settings;p.editor.revision=e.revision+1;}
+ let undoPeer;
+ if(op==='undo'){const last=p.editUndo?.at(-1);if(last?.peerId){const peer=b.projects.find(x=>x.id===last.peerId),other=peer?.editUndo?.at(-1);if(!other||other.pair!==last.pair||peer.installed)throw Error('Video cùng hoán đổi đã thay đổi. Hoàn tác thao tác mới hơn trước.');undoPeer=peer;peer.editUndo.pop();const revision=peer.editor.revision;peer.editor=other.editor;peer.name=other.name;peer.assignments=other.assignments;peer.settings=other.settings;peer.editor.revision=revision+1;const songs=clone(peer.assignments);rebuild(peer);peer.assignments=songs;}const prev=p.editUndo?.pop();if(!prev)throw Error('Không có thao tác để hoàn tác.');p.editor=prev.editor;p.name=prev.name;p.assignments=prev.assignments;p.settings=prev.settings??p.settings;p.editor.revision=e.revision+1;}
  else {
   (p.editUndo??=[]).push({editor:clone(e),name:p.name,assignments:clone(p.assignments),settings:clone(p.settings)});p.editUndo=p.editUndo.slice(-5);
   if(op==='settings'){p.settings=require('./remix-settings.cjs').validate(clone(args.settings));if(p.settings.reblockEnabled)reblock(p,p.settings.blockSize);}
@@ -206,7 +200,7 @@ async function mutate(store,args){
   }else throw Error('Thao tác không hợp lệ.');
   e.revision++;
  }
- if(!['blockMusic','swapMusicHook'].includes(op))rebuild(p);p.editedAt=new Date().toISOString();p.locked=!p.mixUnlocked;if(localRow)saveProjectEdit(store,b,p,localRow);else remix.save(store,b);return present(p,b,store);
+ if(!['blockMusic','swapMusicHook'].includes(op))rebuild(p);p.editedAt=new Date().toISOString();p.locked=!p.mixUnlocked;require('./remix-storage.cjs').saveProjects(store,b.id,undoPeer?[p,undoPeer]:[p],b.updated);return present(p,b,store);
 }
 function copyForExport(store,id,projectId,existingNames=[]){
  const b=remix.get(store,id),source=b.projects.find(p=>p.id===projectId);if(!source)throw Error('Không tìm thấy dự án.');if(!source.installed)throw Error('Dự án chưa tạo CapCut; hãy chỉnh bản nháp hiện tại.');

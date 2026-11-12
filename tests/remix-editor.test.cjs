@@ -53,8 +53,10 @@ test('Swap block music with Hook retimes songs and rejects a short song atomical
   const state=store.create('Swap'),p=fixture();p.assignments=[{block:0,name:'Hook',path:'h.mp3',fingerprint:'h',sourceDuration:100,start:3e6,duration:9e6},{block:1,name:'Body',path:'b.mp3',fingerprint:'b',sourceDuration:100,start:12e6,duration:12e6}];
   const batch={id:uid(),rootId:state.id,channelId:state.id,name:'Batch',sources:[],projects:[p],settings:defaults()};remix.save(store,batch);
   let shown=edit.open(store,batch.id,p.id);
+  const writes=auditProjectWrites(store);
   shown=await edit.mutate(store,{id:batch.id,projectId:p.id,revision:shown.revision,op:'swapMusicHook',blockId:shown.blocks[1].id});
   assert.equal(shown.assignments[0].name,'Body');assert.equal(shown.assignments[0].start,3e6);assert.equal(shown.assignments[0].duration,9e6);assert.equal(shown.assignments[1].name,'Hook');
+  assert.deepEqual(writes(),[p.id]);store.db.exec('DROP TRIGGER reject_header_write');
   const saved=remix.get(store,batch.id);saved.projects[0].assignments[0].sourceDuration=10;remix.save(store,saved);
   const before=JSON.stringify(remix.get(store,batch.id));
   await assert.rejects(edit.mutate(store,{id:batch.id,projectId:p.id,revision:shown.revision,op:'swapMusicHook',blockId:shown.blocks[1].id}),/không đủ dài/);
@@ -122,11 +124,12 @@ test('Peer grid uses exact block including Hook; swaps native units and paired u
  const shown=edit.open(store,b.id,p.id),id=shown.blocks[1].units[0].id;
  const choices=edit.swapCandidates(store,b.id,p.id,id);assert.equal(choices.length,2);assert(choices.every(c=>c.peerId===peer.id&&c.block===1));
  assert.equal(edit.swapCandidates(store,b.id,p.id,shown.blocks[0].units[0].id).length,2);
- const before=remix.get(store,b.id),c=choices[1];
+ const before=remix.get(store,b.id),c=choices[1],writes=auditProjectWrites(store);
  const changed=await edit.mutate(store,{id:b.id,projectId:p.id,revision:shown.revision,op:'swapPeer',unitId:id,peerId:c.peerId,otherId:c.unitId,peerRevision:c.peerRevision});
  const after=remix.get(store,b.id);assert.equal(changed.blocks[1].units[0].id,c.unitId);assert.equal(after.projects[1].editor.blocks[1].units[1].id,id);assert.deepEqual(after.projects[2],before.projects[2]);
  assert.deepEqual(after.projects[0].editor.blocks[1].units[0].segments,edit.init(before.projects[1]).blocks[1].units[1].segments);
  await edit.mutate(store,{id:b.id,projectId:p.id,revision:changed.revision,op:'undo'});
+ assert.deepEqual(writes(),[p.id,peer.id,p.id,peer.id]);
  const undone=remix.get(store,b.id);assert.equal(undone.projects[0].editor.blocks[1].units[0].id,id);assert.equal(undone.projects[1].editor.blocks[1].units[1].id,c.unitId);
  }finally{store.close();}
 });
@@ -190,3 +193,10 @@ test('Swap picker shows blocked footage but cannot select it',async()=>{
  await assert.rejects(edit.mutate(store,{id:b.id,projectId:p.id,revision:shown.revision,op:'swapPeer',unitId:id,peerId:c.peerId,otherId:c.unitId,peerRevision:c.peerRevision}));
  }finally{store.close();}
 });
+
+function auditProjectWrites(store){
+ store.db.exec(`CREATE TEMP TABLE project_writes(id TEXT);
+ CREATE TEMP TRIGGER record_project_write AFTER UPDATE ON main.remix_projects BEGIN INSERT INTO project_writes VALUES(new.id); END;
+ CREATE TEMP TRIGGER reject_header_write BEFORE UPDATE ON main.remix_headers BEGIN SELECT raise(ABORT,'unexpected batch write'); END;`);
+ return ()=>store.db.prepare('SELECT id FROM project_writes ORDER BY rowid').all().map(row=>row.id);
+}

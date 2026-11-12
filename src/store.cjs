@@ -14,6 +14,10 @@ class Store {
       CREATE TABLE IF NOT EXISTS reservations(niche_id TEXT NOT NULL,draft_id TEXT NOT NULL,fingerprint TEXT NOT NULL,PRIMARY KEY(niche_id,draft_id,fingerprint));
       CREATE TABLE IF NOT EXISTS preferences(key TEXT PRIMARY KEY,value TEXT); PRAGMA user_version=1;`);
     if(file!==':memory:'&&!this.db.prepare("SELECT name FROM sqlite_master WHERE name='channels'").get()&&this.db.prepare('SELECT COUNT(*) AS n FROM niches').get().n){const backup=file+'.before-channels-'+Date.now()+'.sqlite';this.db.exec("VACUUM INTO '"+backup.replaceAll("'","''")+"'");}
+    if(file!==':memory:'&&this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='remix_batches'").get()&&this.db.prepare('SELECT 1 FROM remix_batches LIMIT 1').get()){
+      const backup=file+'.before-remix-projects-'+Date.now()+'.sqlite';
+      this.db.exec("VACUUM INTO '"+backup.replaceAll("'","''")+"'");
+    }
     require('./channels.cjs').schema(this);
     // Backfill existing manifests and archived drafts once; keep USED semantics separate.
     if(!this.pref('reservations-v1')){

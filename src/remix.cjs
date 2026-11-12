@@ -8,7 +8,6 @@ const read=p=>JSON.parse(fs.readFileSync(p,'utf8').replace(/^\uFEFF/,''));
 const engine=()=>import(pathToFileURL(path.join(__dirname,'remix/engine.mjs')).href);
 function list(store,id){const root=store.db.prepare('SELECT root_id FROM channels WHERE id=?').get(id)?.root_id||id;return store.db.prepare('SELECT id,name,channel_id,updated,summary FROM remix_batches WHERE root_id=? ORDER BY updated DESC').all(root).map(r=>{const m=JSON.parse(r.summary);return {id:r.id,name:r.name,channelId:r.channel_id,count:m.count,sourceCount:m.sourceCount,created:m.created,updated:r.updated,sourceBatchId:m.sourceBatchId,inputSourceIds:m.inputSourceIds||[],sourceIds:m.sourceIds||[]};});}
 const batchReadCache=new WeakMap();
-function readCached(store,id){let cache=batchReadCache.get(store);if(!cache){cache=new Map();batchReadCache.set(store,cache);}const meta=store.db.prepare('SELECT updated FROM remix_batches INDEXED BY remix_identity_updated WHERE id=?').get(id);if(!meta)throw Error('Không tìm thấy bộ dự án.');let entry=cache.get(id);if(!entry||entry.updated!==meta.updated){const r=store.db.prepare('SELECT data FROM remix_batches WHERE id=?').get(id);entry={updated:meta.updated,value:JSON.parse(r.data)};cache.clear();cache.set(id,entry);}return entry.value;}
 function get(store,id){const r=store.db.prepare('SELECT data FROM remix_batches WHERE id=?').get(id);if(!r)throw Error('Không tìm thấy bộ dự án.');return JSON.parse(r.data);}
 function upgradeProjectNames(store,batch){
  if(!batch.projects.length)return;
@@ -38,22 +37,42 @@ function upgradeProjectNames(store,batch){
  for(const p of fallback)rename(p,next().name);
  save(store,batch);
 }
-function mediaPath(store,id,projectId,unitId){const b=readCached(store,id),p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy bản nháp.');const units=[...(p.editor?.blocks||[]).flatMap(b=>b.units),...(p.editor?.ending?[p.editor.ending]:[])];return units.find(u=>u.id===unitId)?.path;}
+function mediaPath(store,id,projectId,unitId){
+ const stamp=store.db.prepare('SELECT updated FROM remix_projects WHERE batch=? AND id=?').get(id,projectId)?.updated;
+ if(!stamp)throw Error('Không tìm thấy bản nháp.');
+ let cache=batchReadCache.get(store);
+ if(!cache||cache.batch!==id){cache=new Map();cache.batch=id;batchReadCache.set(store,cache);}
+ let entry=cache.get(projectId);
+ if(entry?.stamp!==stamp){
+  const {editor}=store.db.prepare("SELECT json_extract(data,'$.editor') editor FROM remix_projects WHERE batch=? AND id=?").get(id,projectId);
+  const e=JSON.parse(editor),paths=new Map();for(const bl of e?.blocks||[])for(const u of bl.units||[])paths.set(u.id,u.path);
+  if(e?.ending)paths.set(e.ending.id,e.ending.path);entry={stamp,paths};cache.set(projectId,entry);
+ }
+ return entry.paths.get(unitId);
+}
 const musicReadCache=new WeakMap();
 function musicPreview(store,id,projectId){
  const stamp=store.db.prepare('SELECT updated FROM remix_batches WHERE id=?').get(id)?.updated;
  const cached=musicReadCache.get(store);if(cached?.id===id&&cached.projectId===projectId&&cached.stamp===stamp)return cached.value;
- const row=store.db.prepare(`SELECT json_object('id',json_extract(p.value,'$.id'),'settings',json_extract(p.value,'$.settings'),
- 'assignments',json_extract(p.value,'$.assignments'),'blocks',json_extract(p.value,'$.blocks'),
- 'editor',json_object('blocks',json((SELECT json_group_array(json_object('id',json_extract(bl.value,'$.id'))) FROM json_each(p.value,'$.editor.blocks') bl)))) AS project,
+ const row=store.db.prepare(`SELECT json_object('id',json_extract(p.data,'$.id'),'settings',json_extract(p.data,'$.settings'),
+ 'assignments',json_extract(p.data,'$.assignments'),'blocks',json_extract(p.data,'$.blocks'),
+ 'editor',json_object('blocks',json((SELECT json_group_array(json_object('id',json_extract(bl.value,'$.id'))) FROM json_each(p.data,'$.editor.blocks') bl)))) AS project,
  json_extract(rb.data,'$.renderSettings') AS render_settings,json_extract(rb.data,'$.settings') AS settings
- FROM remix_batches rb,json_each(rb.data,'$.projects') p WHERE rb.id=? AND json_extract(p.value,'$.id')=?`).get(id,projectId);
+ FROM remix_headers rb JOIN remix_projects p ON p.batch=rb.id WHERE rb.id=? AND p.id=?`).get(id,projectId);
  if(!row)throw Error('Không tìm thấy bản nháp.');
  const p=JSON.parse(row.project),value={p,settings:require('./remix-settings.cjs').effective(p,JSON.parse(row.render_settings||row.settings||'{}'))};
  musicReadCache.set(store,{id,projectId,stamp,value});return value;
 }
 
-function save(store,b){musicReadCache.delete(store);batchReadCache.get(store)?.delete(b.id);b.updated=new Date().toISOString();const summary={count:b.projects.length,sourceCount:b.sources.length,created:b.projects.filter(p=>p.installed).length,names:b.projects.map(p=>p.name),sourceBatchId:b.sourceBatchId||null,inputSourceIds:b.inputSourceIds||b.sources.map(s=>s.id),sourceIds:b.sources.map(s=>s.id),signatures:[...new Set([...(b.inheritedHistory||[]),...b.projects.map(p=>p.signature)])]};store.db.prepare('INSERT INTO remix_batches(id,root_id,channel_id,name,data,updated,summary) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated=excluded.updated,name=excluded.name,summary=excluded.summary').run(b.id,b.rootId,b.channelId,b.name,JSON.stringify(b),b.updated,JSON.stringify(summary));return b;}
+function save(store,b){musicReadCache.delete(store);batchReadCache.delete(store);b.updated=new Date().toISOString();const summary={count:b.projects.length,sourceCount:b.sources.length,created:b.projects.filter(p=>p.installed).length,names:b.projects.map(p=>p.name),sourceBatchId:b.sourceBatchId||null,inputSourceIds:b.inputSourceIds||b.sources.map(s=>s.id),sourceIds:b.sources.map(s=>s.id),signatures:[...new Set([...(b.inheritedHistory||[]),...b.projects.map(p=>p.signature)])]};const db=store.db;require('./remix-storage.cjs').transaction(db,()=>{
+ const old=db.prepare('SELECT updated FROM remix_batches WHERE id=?').get(b.id);
+ if(old)b.updated=new Date(Math.max(Date.now(),Date.parse(old.updated)+1)).toISOString();
+ const {projects,...header}=b;
+ db.prepare('INSERT INTO remix_headers(id,root_id,channel_id,name,data,updated,summary) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,updated=excluded.updated,name=excluded.name,summary=excluded.summary').run(b.id,b.rootId,b.channelId,b.name,JSON.stringify(header),b.updated,JSON.stringify(summary));
+ db.prepare('DELETE FROM remix_projects WHERE batch=?').run(b.id);
+ const insert=db.prepare('INSERT INTO remix_projects(batch,position,id,data,updated) VALUES(?,?,?,?,?)');
+ projects.forEach((p,index)=>insert.run(b.id,index,p.id,JSON.stringify(p),b.updated));
+ });return b;}
 function reuseStats(p){const body=p.editor?p.editor.blocks.slice(1).flatMap(b=>b.units).filter(u=>!u.empty).map(u=>u.fingerprint):p.blocks.slice(1).flatMap(b=>b.clips).map(c=>c.fingerprint);if(!Array.isArray(p.sourceBodyHashes))return {reusedPercent:null,reusedCount:null,bodyCount:body.length};const source=new Set(p.sourceBodyHashes),count=body.filter(h=>h&&source.has(h)).length;return {reusedPercent:body.length?Math.round(count*100/body.length):0,reusedCount:count,bodyCount:body.length};}
 async function refreshReuse(store,b){if(!b.projects.some(p=>!Array.isArray(p.sourceBodyHashes)))return;// Opening the batch must not hash original footage from disk.
 const complete=b.sources.every(src=>(src.draft.materials?.videos||[]).every(m=>!m.path||src.fingerprints?.[norm(m.path)]));
@@ -268,6 +287,18 @@ async function assignMusic(store,id,folders,progress=()=>{},projectId=null){
   for(const slot of [...slots].sort((a,z)=>candidates.get(a.block.index).length-candidates.get(z.block.index).length))if(!match(slot.block.index,new Set()))throw Error(p.name+': không đủ bài khác nhau có độ dài phù hợp.');
   const assign=slots.map(s=>{const song=chosen.get(s.block.index);return {block:s.block.index,path:song.path,name:song.name,fingerprint:song.fingerprint,sourceDuration:song.duration,start:s.start,duration:s.duration};});
   p.assignments=assign.sort((a,z)=>a.block-z.block);
+ }
+ if(projectId){
+  const p=b.projects.find(p=>p.id===projectId);if(!p)throw Error('Không tìm thấy bản nháp.');
+  const storage=require('./remix-storage.cjs');
+  storage.transaction(store.db,()=>{
+   b.updated=storage.saveProjects(store,b.id,[p],b.updated);
+   if(['hook','body'].some(k=>folders[k]!==b.musicFolders?.[k])){
+    store.db.prepare("UPDATE remix_headers SET data=json_set(data,'$.musicFolders',json(?)) WHERE id=?").run(JSON.stringify(folders),id);
+    store.pref('remix-settings:'+b.channelId,JSON.stringify({...preferences(store,b.channelId),folders}));
+   }
+  });
+  b.musicFolders=folders;return b;
  }
  b.musicFolders=folders;store.pref('remix-settings:'+b.channelId,JSON.stringify({...preferences(store,b.channelId),folders}));return save(store,b);
 }
