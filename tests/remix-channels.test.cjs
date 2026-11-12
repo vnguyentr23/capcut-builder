@@ -145,3 +145,26 @@ test('Existing legacy batch names keep suffixes and handle collisions without ch
   const snapshot=JSON.stringify(b);remix.upgradeProjectNames(store,b);assert.equal(JSON.stringify(b),snapshot);
  }finally{store.close();}
 });
+
+test('Saved tool timelines survive source creation, channel cloning, incremental update and restart',async()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ccb-remix-lifecycle-'));
+ const file=path.join(dir,'workspace.sqlite');
+ let store=new Store(file);
+ try{
+  const root=store.create('PHOTO'),channel=channels.create(store,root.id,'Channel two');
+  const originals=[1,2,3].map(i=>fixture(dir,i));
+  for(const s of originals)store.db.prepare('INSERT INTO projects VALUES(?,?,?,?,?,?,?)').run(s.id,root.id,s.name,'CREATED','',new Date().toISOString(),JSON.stringify({timelineSnapshot:s.draft}));
+  const source=await remix.saveSource(store,{stateId:root.id,name:'PHOTO sources',sourceIds:originals.slice(0,2).map(s=>s.id)});
+  const batch=await remix.create(store,{stateId:channel.id,channelId:channel.id,sourceBatchId:source.id,name:'PHOTO clones'});
+  const protectedProject=batch.projects[0];protectedProject.locked=true;remix.save(store,batch);
+  await remix.addToSource(store,{id:source.id,stateId:channel.id,sourceIds:[originals[2].id]});
+  assert.equal(remix.get(store,batch.id).projects.length,2);
+  store.close();store=new Store(file);
+  const updated=await remix.updateFromSource(store,{id:batch.id,stateId:channel.id});
+  assert.equal(updated.projects.length,3);assert.deepEqual(updated.projects[0],protectedProject);
+  store.close();store=new Store(file);
+  assert.deepEqual(remix.get(store,batch.id).projects,updated.projects);
+  assert.equal(remix.get(store,source.id).sources.length,3);
+  await assert.rejects(remix.updateFromSource(store,{id:batch.id,stateId:channel.id}),/Không có video nguồn mới/);
+ }finally{store.close();fs.rmSync(dir,{recursive:true,force:true});}
+});
