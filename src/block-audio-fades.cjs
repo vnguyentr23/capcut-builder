@@ -4,7 +4,9 @@ function attach(d,s,duration){
  const videos=d.materials.videos||[];
  let material=videos.find(m=>m.id===s.material_id);
  if(material && (d.tracks||[]).some(t=>t.segments.some(peer=>peer!==s&&peer.material_id===s.material_id))){
-  material={...structuredClone(material),id:uid()};videos.push(material);s.material_id=material.id;
+  const hash=require('node:crypto').createHash('sha256').update(JSON.stringify([material.id,s.id])).digest('hex');
+  const id=[hash.slice(0,8),hash.slice(8,12),'4'+hash.slice(13,16),'8'+hash.slice(17,20),hash.slice(20,32)].join('-');
+  material={...structuredClone(material),id};videos.push(material);s.material_id=id;
  }
  const previous=material?.audio_fade||fades.find(f=>(s.extra_material_refs||[]).includes(f.id));
  s.extra_material_refs=(s.extra_material_refs||[]).filter(id=>!old.has(id));

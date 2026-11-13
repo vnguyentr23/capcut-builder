@@ -17,7 +17,7 @@ test('Native footage fade is embedded and linked on the final clip only',()=>{
  const first={material_id:'shared'},last={material_id:'shared',target_timerange:{duration:8e6},extra_material_refs:[]};
  const d={tracks:[{segments:[first,last]}],materials:{videos:[{id:'shared',audio_fade:null}]}};
  fades.attach(d,last,3e6);
- assert.equal(d.materials.videos[0].audio_fade,null);
+ assert.equal(d.materials.videos.find(m=>m.id===first.material_id).audio_fade,null);
  const native=d.materials.videos.find(m=>m.id===last.material_id).audio_fade;
  assert.equal(native.fade_out_duration,3e6);
  assert.deepEqual(native,d.materials.audio_fades.find(f=>last.extra_material_refs.includes(f.id)));
