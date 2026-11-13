@@ -13,3 +13,16 @@ test('Timeline căn khung 30fps giữ nhạc và chuyển cảnh trên cùng bi�
  const {draft,media}=fixture();for(const m of media.values())m.duration=10.01731;const tl=d.timeline(draft,media);for(const c of tl.clips){assert.ok(Math.abs(c.start*30-Math.round(c.start*30))<1e-6);assert.ok(Math.abs(c.duration*30-Math.round(c.duration*30))<1e-6);}const slots=d.musicSlots(draft,tl);assert.equal(slots[1].start,tl.clips[4].start);assert.equal(slots[2].start,tl.clips[8].start);
 });
 test('Migration v2 giữ bài Hook/Body, bỏ bài End riêng, không làm mất block đã khóa',()=>{const {draft}=fixture();draft.musicVersion=2;draft.assignments={hook:{id:'h'},'body-block:0':{id:'b'},end:{id:'e'}};d.migratePresets(draft);assert.deepEqual(draft.assignments,{hook:{id:'h'},'body-block:0':{id:'b'}});d.migratePresets(draft);assert.equal(draft.assignments['body-block:0'].id,'b');});
+
+test('Footage fade on Hook and Body accepts zero and fractional seconds independently of music',()=>{
+ const {draft,media}=fixture();
+ for(const seconds of [0,1.5]){
+  draft.footageFade=seconds;
+  assert.deepEqual(d.timeline(draft,media).clips.filter(c=>c.audioFadeOut!==undefined).map(c=>c.audioFadeOut),[seconds,seconds,seconds]);
+  const last={id:'last',target_timerange:{start:0,duration:1e6},extra_material_refs:[]};
+  const timeline={materials:{},tracks:[{type:'video',segments:[last]}]};
+  require('../src/block-audio-fades.cjs').remix({blocks:[{start:0,duration:1e6}]},timeline,seconds);
+  assert.equal(timeline.materials.audio_fades[0].fade_out_duration,Math.min(1,seconds)*1e6);
+  assert.equal(draft.fade,4);
+ }
+});

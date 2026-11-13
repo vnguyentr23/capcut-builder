@@ -14,7 +14,8 @@ function attach(d,s,duration){
  if(material)material.audio_fade={...f};
  fades.push(f);s.extra_material_refs.push(f.id);
 }
-function remix(project,d){
+function remix(project,d,seconds=3){
+ const duration=Math.round(seconds*1e6);
  const rows=new Map();for(const r of project.ledger||[]){const prev=rows.get(r.block);if(!prev||r.newStart+r.duration>prev.newStart+prev.duration)rows.set(r.block,r);}
  const videos=d.tracks.filter(t=>t.type==='video').flatMap(t=>t.segments);
  const lastVideo=[...videos].sort((a,b)=>(b.target_timerange.start+b.target_timerange.duration)-(a.target_timerange.start+a.target_timerange.duration))[0];
@@ -29,9 +30,9 @@ function remix(project,d){
  const attached=new Set();
  for(const row of rows.values()){
   const clips=videos.filter(s=>row.segmentIds.includes(s.id)),last=clips.sort((a,b)=>(b.target_timerange.start+b.target_timerange.duration)-(a.target_timerange.start+a.target_timerange.duration))[0];
-  if(!last||attached.has(last.id))continue;attached.add(last.id);attach(d,last,3000000);
+  if(!last||attached.has(last.id))continue;attached.add(last.id);attach(d,last,duration);
   const end=last.target_timerange.start+last.target_timerange.duration;
-  for(const t of d.tracks.filter(t=>t.type==='audio'&&t.name!=='Nhạc nhân bản'&&!require('./sound-effects.cjs').isTrack(t)))for(const s of t.segments)if(s.target_timerange.start>=last.target_timerange.start&&Math.abs(s.target_timerange.start+s.target_timerange.duration-end)<2)attach(d,s,3000000);
+  for(const t of d.tracks.filter(t=>t.type==='audio'&&t.name!=='Nhạc nhân bản'&&!require('./sound-effects.cjs').isTrack(t)))for(const s of t.segments)if(s.target_timerange.start>=last.target_timerange.start&&Math.abs(s.target_timerange.start+s.target_timerange.duration-end)<2)attach(d,s,duration);
  }
 }
 module.exports={attach,remix};

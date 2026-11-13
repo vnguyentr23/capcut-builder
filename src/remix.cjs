@@ -316,7 +316,7 @@ function withMusic(project,settings,audioPieces=null){
 
  for(const m of d.materials.transitions||[])Object.assign(m,require('./transitions.cjs').resolveEffect(m));
  require('./remix-settings.cjs').apply(project,d,settings);
- require('./block-audio-fades.cjs').remix(project,d);
+ require('./block-audio-fades.cjs').remix(project,d,settings.footageFade??3);
  return d;
 }
 async function prepare(project,base,options={}){

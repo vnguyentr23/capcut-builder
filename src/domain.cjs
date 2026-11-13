@@ -7,10 +7,11 @@ function defaults() {
     introPosition:'afterHook', introAfterBlocks:1, blockSize:3, blockVersion:1, shortClipFill:{enabled:false,threshold:5}, music:{hook:'',body:'',end:''}, assignments:{},
     endEffect:{enabled:false,duration:3,resource:null}, transition:{type:'none',duration:0.35}, vertical:{scale:1.4},
     text:{prefix:'',bold:false,italic:false,underline:false,letterCase:'original',font:'Arial',size:15,scale:0.2,marginLeft:50,marginBottom:50,color:'#ffffff',opacity:1,stroke:2,strokeColor:'#000000',shadow:true,alignment:'left'},
-    hookDelay:3, fade:4, destination:'', mode:'capcut', ducking:require('./ducking.cjs').defaults(),audioVolumeDb:-10,musicAudioMode:'removeVocals',presetVersion:3,writerVersion:1,musicVersion:3};
+    hookDelay:3, footageFade:3, fade:4, destination:'', mode:'capcut', ducking:require('./ducking.cjs').defaults(),audioVolumeDb:-10,musicAudioMode:'removeVocals',presetVersion:3,writerVersion:1,musicVersion:3};
 }
 function migratePresets(draft){
   delete draft.musicAlignment;
+  draft.footageFade??=3;
   draft.pinPriority??=true;
   draft.spreadScarce??=true;
   draft.endEffect={enabled:false,duration:3,resource:null,...draft.endEffect};
@@ -97,9 +98,9 @@ function timeline(draft,media) {
   });
   const lastHook=clips.findLast(c=>c.role==='hook');
   if(draft.transition.type!=='none'&&lastHook){const next=clips[clips.indexOf(lastHook)+1];if(next)transitions.unshift({after:lastHook.key,before:next.key,at:lastHook.start+lastHook.duration,type:draft.transition.type,duration:draft.transition.duration,...(draft.transition.type==='local'?{resource:structuredClone(draft.transition.resource)}:{})});}
-  body.forEach((c,i)=>{if(i===body.length-1||bodyBlocks[i+1]!==bodyBlocks[i])c.audioFadeOut=Math.min(3,c.duration);});
-  if(lastHook)lastHook.audioFadeOut=Math.min(3,lastHook.duration);
-  const ending=clips.find(c=>c.role==='end');if(ending)ending.audioFadeOut=Math.min(3,ending.duration);
+  body.forEach((c,i)=>{if(i===body.length-1||bodyBlocks[i+1]!==bodyBlocks[i])c.audioFadeOut=Math.min(draft.footageFade??3,c.duration);});
+  if(lastHook)lastHook.audioFadeOut=Math.min(draft.footageFade??3,lastHook.duration);
+  const ending=clips.find(c=>c.role==='end');if(ending)ending.audioFadeOut=Math.min(draft.footageFade??3,ending.duration);
   return {clips,transitions,duration:time};
 }
 function musicSlots(draft,tl) {
