@@ -1,9 +1,15 @@
 const {uid}=require('./domain.cjs');
 function attach(d,s,duration){
  const fades=d.materials.audio_fades||=[],old=new Set(fades.map(f=>f.id));
- const previous=fades.find(f=>(s.extra_material_refs||[]).includes(f.id));
+ const videos=d.materials.videos||[];
+ let material=videos.find(m=>m.id===s.material_id);
+ if(material && (d.tracks||[]).some(t=>t.segments.some(peer=>peer!==s&&peer.material_id===s.material_id))){
+  material={...structuredClone(material),id:uid()};videos.push(material);s.material_id=material.id;
+ }
+ const previous=material?.audio_fade||fades.find(f=>(s.extra_material_refs||[]).includes(f.id));
  s.extra_material_refs=(s.extra_material_refs||[]).filter(id=>!old.has(id));
  const f={id:uid(),type:'audio_fade',fade_type:0,fade_in_duration:previous?.fade_in_duration||0,fade_out_duration:Math.min(duration,s.target_timerange.duration)};
+ if(material)material.audio_fade={...f};
  fades.push(f);s.extra_material_refs.push(f.id);
 }
 function remix(project,d){
