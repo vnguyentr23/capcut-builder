@@ -49,15 +49,33 @@ function apply(project,d,s){
  if(s.textEnabled){const texts=new Map((d.materials.texts||[]).map(m=>[m.id,m]));for(const t of d.tracks.filter(t=>t.type==='text'))for(const seg of t.segments){const old=texts.get(seg.material_id);if(!old)continue;let content;try{content=JSON.parse(old.content).text;}catch{throw Error('Không đọc được chữ nguồn.');}if(!content)continue;const m=require('./capcut-writer.cjs').makeText({source:content,previousPrefix:old.ccb_credit_prefix,path:'credit',text:s.text},seg);Object.assign(old,m,{id:old.id});seg.common_keyframes=(seg.common_keyframes||[]).filter(k=>!/scale|position|alpha/i.test(k.property_type||''));}}
  require('./end-effect.cjs').append(d,require('./end-effect.cjs').timing(s.endEffect,d.duration/1e6),uid);return d;
 }
-function batchSettings(store,id){const b=require('./remix.cjs').get(store,id);return {settings:effective({},b.renderSettings||initial(b.settings)),updated:b.updated,count:b.projects.filter(p=>!p.installed).length,installed:b.projects.filter(p=>p.installed).length};}
+function batchSettings(store,id){
+ const row=store.db.prepare(`SELECT c.settings,b.updated,
+ (SELECT count(*) FROM remix_projects WHERE batch=b.id AND installed IS NULL) count,
+ (SELECT count(*) FROM remix_projects WHERE batch=b.id AND installed IS NOT NULL) installed
+ FROM remix_edit_config c JOIN remix_batches b ON b.id=c.batch WHERE b.id=?`).get(id);
+ if(!row)throw Error('Không tìm thấy bộ dự án.');
+ return {...row,settings:effective({},JSON.parse(row.settings||'{}'))};
+}
 function applyBatch(store,{id,settings,updated,backgroundColor}){
- const remix=require('./remix.cjs'),b=remix.get(store,id);if(updated!==b.updated)throw Error('Bộ đã thay đổi. Mở lại thiết lập để áp dụng.');validate(settings);
- const pending=b.projects.filter(p=>!p.installed);if(!pending.length)throw Error('Không còn bản nháp chưa tạo CapCut.');
+ const info=batchSettings(store,id),header=store.db.prepare('SELECT channel_id FROM remix_headers WHERE id=?').get(id);
+ const b={channelId:header.channel_id,updated:info.updated,settings:info.settings};
+ if(updated!==b.updated)throw Error('Bộ đã thay đổi. Mở lại thiết lập để áp dụng.');validate(settings);
+ const pending=store.db.prepare('SELECT data FROM remix_projects WHERE batch=? AND installed IS NULL ORDER BY position').all(id).map(r=>JSON.parse(r.data));if(!pending.length)throw Error('Không còn bản nháp chưa tạo CapCut.');
  for(const p of pending){
   if(settings.reblockEnabled)require('./remix-editor.cjs').init(p);
   if(p.editor){(p.editUndo??=[]).push({editor:structuredClone(p.editor),name:p.name,assignments:structuredClone(p.assignments),settings:structuredClone(p.settings||initial(b.settings))});p.editUndo=p.editUndo.slice(-5);p.editor.revision++;}
   p.settings=structuredClone(settings);if(settings.reblockEnabled)require('./remix-editor.cjs').reblock(p,settings.blockSize);p.assignments=require('./remix-timing.cjs').assignments(p,settings);p.editedAt=new Date().toISOString();
  }
- b.renderSettings=structuredClone(settings);remix.save(store,b);if(backgroundColor!==undefined){const channel=store.get(b.channelId);channel.videoBackgroundColor=backgroundColor;store.save(channel);}return {count:pending.length,skipped:b.projects.length-pending.length};
+ const storage=require('./remix-storage.cjs');
+ storage.transaction(store.db,()=>{
+  storage.saveProjects(store,id,pending,updated);
+  store.db.prepare("UPDATE remix_headers SET data=json_set(data,'$.renderSettings',json(?)) WHERE id=?").run(JSON.stringify(settings),id);
+  if(backgroundColor!==undefined){
+   const channel=store.get(b.channelId);
+   if(channel.videoBackgroundColor!==backgroundColor){channel.videoBackgroundColor=backgroundColor;store.save(channel);}
+  }
+ });
+ return {count:pending.length,skipped:info.installed,projects:pending.map(p=>({id:p.id,editedAt:p.editedAt,blocks:p.blocks,assignments:p.assignments,draft:{duration:p.draft.duration}}))};
 }
 module.exports={effective,initial,validate,apply,batchSettings,applyBatch};
