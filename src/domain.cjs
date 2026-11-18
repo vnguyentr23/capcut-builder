@@ -164,14 +164,14 @@ function manifest(draft,niche,media) {
       });
     }),draft:structuredClone(draft),createdAt:new Date().toISOString()};
 }
-function swapMusicHook(draft, slots, key, excluded=[]) {
-  const hook=slots.find(s=>s.key==='hook'),body=slots.find(s=>s.key===key);
-  if(!key.startsWith('body-block:')||!body||!hook)throw Error('Cần có Hook và block Body để đổi nhạc.');
-  const a=draft.assignments.hook,b=draft.assignments[key];
-  if(!a||!b)throw Error('Hãy gán nhạc cho cả Hook và block trước khi đổi.');
-  if(a.fingerprint===b.fingerprint||[a,b].some(m=>excluded.includes(m.fingerprint)))throw Error('Bài nhạc bị trùng hoặc đã bị loại khỏi ngách.');
-  if(!Number.isFinite(b.duration)||b.duration+1e-7<hook.duration)throw Error('Bài của block không đủ dài cho Hook. Giữ nguyên hai bài.');
-  if(!Number.isFinite(a.duration)||a.duration+1e-7<body.duration)throw Error('Bài của Hook không đủ dài cho block này. Giữ nguyên hai bài.');
-  return {...draft.assignments,hook:b,[key]:a};
+function swapMusicBlocks(draft,slots,firstKey,secondKey,excluded=[]){
+ const first=slots.find(s=>s.key===firstKey),second=slots.find(s=>s.key===secondKey);
+ if(!first||!second||firstKey===secondKey)throw Error('Chọn hai block khác nhau để tráo nhạc.');
+ const a=draft.assignments[firstKey],b=draft.assignments[secondKey];
+ if(!a||!b)throw Error('Hãy gán nhạc cho cả hai block trước khi đổi.');
+ if(a.fingerprint===b.fingerprint||[a,b].some(m=>excluded.includes(m.fingerprint)))throw Error('Bài nhạc bị trùng hoặc đã bị loại khỏi ngách.');
+ if(!Number.isFinite(b.duration)||b.duration+1e-7<first.duration||!Number.isFinite(a.duration)||a.duration+1e-7<second.duration)throw Error('Bài nhạc không đủ dài cho block nhận.');
+ return {...draft.assignments,[firstKey]:b,[secondKey]:a};
 }
-module.exports={swapMusicHook,uid,defaults,migratePresets,dbToGain,textLayout,nameErrors,fixName,generate,clipRange,timeline,musicSlots,assignMusic,manifest};
+function swapMusicHook(draft,slots,key,excluded=[]){return swapMusicBlocks(draft,slots,'hook',key,excluded);}
+module.exports={swapMusicBlocks,swapMusicHook,uid,defaults,migratePresets,dbToGain,textLayout,nameErrors,fixName,generate,clipRange,timeline,musicSlots,assignMusic,manifest};

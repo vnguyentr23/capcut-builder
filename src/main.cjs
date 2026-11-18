@@ -162,6 +162,12 @@ app.whenReady().then(async()=>{
       for(const id of [draft.hook[hookIndex].id,draft.body[bodyIndex].id])if(!fs.existsSync(map.get(id).path))throw Error('File footage không tồn tại.');
       s.draft=draft;store.save(s);return view(s);
     },
+    swapMusicBlocks:async({state:s,firstKey,secondKey})=>{
+      const slots=domain.musicSlots(s.draft,domain.timeline(s.draft,hydrate(s)));
+      const assignments=domain.swapMusicBlocks(s.draft,slots,firstKey,secondKey,s.musicExcluded||[]);
+      for(const m of [assignments[firstKey],assignments[secondKey]])if(!fs.existsSync(m.path))throw Error('File nhạc không tồn tại: '+m.path);
+      s.draft.assignments=assignments;store.save(s);return view(s);
+    },
     swapMusicHook:async({state:s,key})=>{
       const slots=domain.musicSlots(s.draft,domain.timeline(s.draft,hydrate(s)));
       const assignments=domain.swapMusicHook(s.draft,slots,key,s.musicExcluded||[]);
