@@ -11,7 +11,7 @@
  const $r=id=>document.getElementById(id),base=()=>({id:batchId,projectId:doc.id}),payload=()=>({...base(),revision:doc.revision});let folders={};
  async function task(fn,label='Đang xử lý bản nháp…'){if(pending||busy)return;pending=true;pane.inert=true;try{return await run(label,fn);}finally{pending=false;pane.inert=false;}}
 
- async function saveEdit(op,values={}){return task(async()=>{doc=await api('remixEditSave',{...payload(),op,...values});if(['blockMusic','swapMusicHook'].includes(op))paintMusic();else paint();toast('Đã lưu bản nháp.');return true;},op==='blockMusic'?'Đang chọn và đổi nhạc…':'Đang lưu bản nháp…');}
+ async function saveEdit(op,values={}){return task(async()=>{doc=await api('remixEditSave',{...payload(),op,...values});if(op==='endingDuration')paintEndingDuration();else if(['blockMusic','swapMusicHook'].includes(op))paintMusic();else paint();toast('Đã lưu bản nháp.');return true;},op==='blockMusic'?'Đang chọn và đổi nhạc…':'Đang lưu bản nháp…');}
  window.openRemixEditor=(id,projectId)=>task(async()=>{stopFootage();toggleSettings(false);batchId=id;mediaCache.clear();doc=await api('remixEditOpen',{id,projectId});folders={...remixBatch?.musicFolders};document.body.classList.add('remixDraftMode','remixMode');$('#remixPanel').hidden=true;pane.hidden=false;selectedSwap=null;paint();});
  async function leave(){pauseAll();pane.hidden=true;document.body.classList.remove('remixDraftMode');$('#remixPanel').hidden=false;remixBatch=await api('remixGet',batchId);await loadRemix();}
  $r('rxBack').onclick=()=>task(leave);
@@ -66,6 +66,13 @@
    const swap=host.querySelector('[data-song-swap]');if(swap)swap.disabled=!doc.assignments.some(a=>a.block===0)||!doc.assignments.some(a=>a.block===i);
   });
   $r('rxSongs').innerHTML=doc.assignments.map(a=>`<div class="row"><span>${a.block===0?'Hook':'Block '+a.block}: ${esc(a.name)}</span></div>`).join('')||'Chưa gán nhạc.';
+ }
+ function paintEndingDuration(){
+  $r('rxStatus').textContent=(doc.installed?'Đã tạo CapCut':'Đã chỉnh sửa · Đã lưu')+' · '+fmt(doc.duration+(doc.settings.intro?.duration||0));
+  $r('rxUndo').disabled=!doc.canUndo;
+  const input=$r('rxImageDuration');if(input)input.value=doc.ending.duration;
+  const card=$r('rxBlocks').querySelector('[data-unit="'+CSS.escape(doc.ending.id)+'"]');
+  if(card){card.querySelector('.rxThumb span').textContent=fmt(doc.ending.duration);card.querySelector('[data-edit]').classList.toggle('rxEdited',doc.ending.edited);}
  }
  function paint(){
   const unitMap=new Map(allUnits().map(u=>[u.id,u]));

@@ -134,7 +134,7 @@ function loadProjectEdit(store,id,projectId,peerId=null){
 }
 async function mutate(store,args){
  if(args.op==='swapPeer')return swapPeer(store,args);
- const {id,projectId,revision,op}=args,{b,p}=['swap','blockMusic','swapMusicHook'].includes(op)?loadProjectEdit(store,id,projectId):load(store,id,projectId),e=p.editor;
+ const {id,projectId,revision,op}=args,{b,p}=['swap','blockMusic','swapMusicHook','ending','endingDuration','addHook','parts','remove'].includes(op)?loadProjectEdit(store,id,projectId):load(store,id,projectId),e=p.editor;
  if(revision!==e.revision)throw Error('Bản nháp đã thay đổi. Mở lại trước khi lưu.');
  let undoPeer;
  if(op==='undo'){const last=p.editUndo?.at(-1);if(last?.peerId){const peer=b.projects.find(x=>x.id===last.peerId),other=peer?.editUndo?.at(-1);if(!other||other.pair!==last.pair||peer.installed)throw Error('Video cùng hoán đổi đã thay đổi. Hoàn tác thao tác mới hơn trước.');undoPeer=peer;peer.editUndo.pop();const revision=peer.editor.revision;peer.editor=other.editor;peer.name=other.name;peer.assignments=other.assignments;peer.settings=other.settings;peer.editor.revision=revision+1;const songs=clone(peer.assignments);rebuild(peer);peer.assignments=songs;}const prev=p.editUndo?.pop();if(!prev)throw Error('Không có thao tác để hoàn tác.');p.editor=prev.editor;p.name=prev.name;p.assignments=prev.assignments;p.settings=prev.settings??p.settings;p.editor.revision=e.revision+1;}
