@@ -68,6 +68,7 @@
   $r('rxSongs').innerHTML=doc.assignments.map(a=>`<div class="row"><span>${a.block===0?'Hook':'Block '+a.block}: ${esc(a.name)}</span></div>`).join('')||'Chưa gán nhạc.';
  }
  function paintEndingDuration(){
+  paintMusic();
   $r('rxStatus').textContent=(doc.installed?'Đã tạo CapCut':'Đã chỉnh sửa · Đã lưu')+' · '+fmt(doc.duration+(doc.settings.intro?.duration||0));
   $r('rxUndo').disabled=!doc.canUndo;
   const input=$r('rxImageDuration');if(input)input.value=doc.ending.duration;
