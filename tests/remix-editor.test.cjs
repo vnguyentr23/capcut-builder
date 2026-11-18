@@ -200,3 +200,23 @@ function auditProjectWrites(store){
  CREATE TEMP TRIGGER reject_header_write BEFORE UPDATE ON main.remix_headers BEGIN SELECT raise(ABORT,'unexpected batch write'); END;`);
  return ()=>store.db.prepare('SELECT id FROM project_writes ORDER BY rowid').all().map(row=>row.id);
 }
+
+test('Swap songs between two Body blocks and then Hook, preserving undo and other projects',async()=>{
+ const store=new Store(':memory:');
+ try{
+ const n=store.create('Swap all'),p=fixture(),peer=fixture();
+ p.assignments=[0,1,2].map(block=>({block,name:'Song '+block,path:block+'.mp3',fingerprint:String(block),sourceDuration:100,start:block*12e6,duration:12e6}));
+ const batch={id:uid(),rootId:n.id,channelId:n.id,name:'B',sources:[],projects:[p,peer],settings:defaults()};remix.save(store,batch);
+ let shown=edit.open(store,batch.id,p.id);
+ const before=remix.get(store,batch.id).projects[1],writes=auditProjectWrites(store);
+ shown=await edit.mutate(store,{id:batch.id,projectId:p.id,revision:shown.revision,op:'swapMusicBlocks',firstBlockId:shown.blocks[1].id,blockId:shown.blocks[2].id});
+ assert.equal(shown.assignments.find(a=>a.block===1).name,'Song 2');
+ shown=await edit.mutate(store,{id:batch.id,projectId:p.id,revision:shown.revision,op:'swapMusicBlocks',firstBlockId:shown.blocks[1].id,blockId:shown.blocks[0].id});
+ assert.equal(shown.assignments.find(a=>a.block===0).name,'Song 2');
+ assert.equal(shown.assignments.find(a=>a.block===0).start,3e6);
+ shown=await edit.mutate(store,{id:batch.id,projectId:p.id,revision:shown.revision,op:'undo'});
+ assert.equal(shown.assignments.find(a=>a.block===0).name,'Song 0');
+ assert.deepEqual(remix.get(store,batch.id).projects[1],before);
+ assert.deepEqual(writes(),[p.id,p.id,p.id]);
+ }finally{store.close();}
+});
