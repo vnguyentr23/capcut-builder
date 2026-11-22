@@ -50,7 +50,11 @@ function measureCredit(text,primary,em,includeHeight=true){
     const layout=font.layout(runText);
     const cjkFallback=font!==primary && /[\p{Script=Han}\p{Script=Katakana}\p{Script=Hiragana}\uFF00-\uFFEF]/u.test(runText);
     const factor=em/font.unitsPerEm;
-    width+=layout.positions.reduce((n,pos)=>n+pos.xAdvance,0)*factor*(cjkFallback?100/85:1);
+    // Agency FB Bold renders about 25% wider in CapCut than the shared calibration.
+    // 1080p TAILBITPETS: measured ink 145 px vs estimated 117 px at size 15 / scale .2.
+    // Apply per font run so CJK/emoji fallback and other fonts retain their calibration.
+    const widthCorrection=font.postscriptName==='AgencyFB-Bold'?1.25:1;
+    width+=layout.positions.reduce((n,pos)=>n+pos.xAdvance,0)*factor*widthCorrection*(cjkFallback?100/85:1);
     if(includeHeight){
       // Color/bitmap glyphs may have no outline accessible to fontkit.
       // Use the font metrics for those runs; keep the shaped advance above.
