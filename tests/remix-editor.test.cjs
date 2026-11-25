@@ -123,7 +123,7 @@ test('Peer grid uses exact block including Hook; swaps native units and paired u
  done.installed={path:'exported'};const b={id:uid(),rootId:state.id,channelId:state.id,name:'Grid',sources:[],projects:[p,peer,done],settings:defaults()};remix.save(store,b);
  const shown=edit.open(store,b.id,p.id),id=shown.blocks[1].units[0].id;
  const choices=edit.swapCandidates(store,b.id,p.id,id);assert.equal(choices.length,2);assert(choices.every(c=>c.peerId===peer.id&&c.block===1));
- assert.equal(edit.swapCandidates(store,b.id,p.id,shown.blocks[0].units[0].id).length,2);
+ assert.equal(edit.swapCandidates(store,b.id,p.id,shown.blocks[0].units[0].id).length,4);
  const before=remix.get(store,b.id),c=choices[1],writes=auditProjectWrites(store);
  const changed=await edit.mutate(store,{id:b.id,projectId:p.id,revision:shown.revision,op:'swapPeer',unitId:id,peerId:c.peerId,otherId:c.unitId,peerRevision:c.peerRevision});
  const after=remix.get(store,b.id);assert.equal(changed.blocks[1].units[0].id,c.unitId);assert.equal(after.projects[1].editor.blocks[1].units[1].id,id);assert.deepEqual(after.projects[2],before.projects[2]);
@@ -182,7 +182,7 @@ test('Swap picker marks exported copies while retaining eligible unexported peer
  done.installed={path:'capcut'};done.mixUnlocked=true;done.locked=false;
  const b={id:uid(),rootId:state.id,channelId:state.id,name:'B',sources:[],projects:[p,peer,done],settings:defaults()};remix.save(store,b);
  const shown=edit.open(store,b.id,p.id);
- for(const index of [0,1]){const rows=edit.swapCandidates(store,b.id,p.id,shown.blocks[index].units[0].id);assert.equal(rows.length,2);assert(rows.every(c=>c.peerId===peer.id&&c.exportedBefore&&c.exportedProjects.includes(done.name)));}
+ for(const index of [0,1]){const rows=edit.swapCandidates(store,b.id,p.id,shown.blocks[index].units[0].id);assert.equal(rows.length,index===0?4:2);assert(rows.every(c=>(c.peerId===peer.id||index===0&&c.peerId===done.id)&&c.exportedBefore&&c.exportedProjects.includes(done.name)));}
  }finally{store.close();}
 });
 
@@ -218,5 +218,25 @@ test('Swap songs between two Body blocks and then Hook, preserving undo and othe
  assert.equal(shown.assignments.find(a=>a.block===0).name,'Song 0');
  assert.deepEqual(remix.get(store,batch.id).projects[1],before);
  assert.deepEqual(writes(),[p.id,p.id,p.id]);
+ }finally{store.close();}
+});
+
+test('Hook copies exported duplicate without writing source; undo only restores destination',async()=>{
+ const store=new Store(':memory:');try{
+ const state=store.create('Hook copy'),p=fixture(),done=fixture();done.installed='capcut';done.locked=true;
+ const b={id:uid(),rootId:state.id,channelId:state.id,name:'B',sources:[],projects:[p,done],settings:defaults()};remix.save(store,b);
+ const shown=edit.open(store,b.id,p.id),before=remix.get(store,b.id).projects[1],writes=auditProjectWrites(store);
+ const rows=edit.swapCandidates(store,b.id,p.id,shown.blocks[0].units[0].id);assert.equal(rows.length,2);assert(rows.every(c=>c.copyOnly));assert.deepEqual(remix.get(store,b.id).projects[1],before);
+ const c=rows[1],changed=await edit.mutate(store,{id:b.id,projectId:p.id,revision:shown.revision,op:'swapPeer',unitId:shown.blocks[0].units[0].id,peerId:c.peerId,otherId:c.unitId,peerRevision:c.peerRevision});
+ const after=remix.get(store,b.id);assert.deepEqual(after.projects[1],before);assert.equal(after.projects[0].editor.blocks[0].units[0].fingerprint,c.fingerprint);assert.notEqual(changed.blocks[0].units[0].id,c.unitId);
+ await edit.mutate(store,{id:b.id,projectId:p.id,revision:changed.revision,op:'undo'});assert.deepEqual(writes(),[p.id,p.id]);assert.deepEqual(remix.get(store,b.id).projects[1],before);assert.equal(edit.open(store,b.id,p.id).blocks[0].units[0].id,shown.blocks[0].units[0].id);
+ }finally{store.close();}
+});
+test('Hook swaps allow duplicate footage in both pending videos',async()=>{
+ const store=new Store(':memory:');try{
+ const state=store.create('Hook duplicates'),p=fixture(),peer=fixture(),b={id:uid(),rootId:state.id,channelId:state.id,name:'B',sources:[],projects:[p,peer],settings:defaults()};remix.save(store,b);
+ const shown=edit.open(store,b.id,p.id),rows=edit.swapCandidates(store,b.id,p.id,shown.blocks[0].units[0].id);assert.equal(rows.length,2);const c=rows[1];assert.equal(c.copyOnly,false);
+ await edit.mutate(store,{id:b.id,projectId:p.id,revision:shown.revision,op:'swapPeer',unitId:shown.blocks[0].units[0].id,peerId:c.peerId,otherId:c.unitId,peerRevision:c.peerRevision});
+ const after=remix.get(store,b.id);assert.equal(after.projects[0].editor.blocks[0].units[0].id,c.unitId);assert.equal(after.projects[1].editor.blocks[0].units[1].id,shown.blocks[0].units[0].id);
  }finally{store.close();}
 });

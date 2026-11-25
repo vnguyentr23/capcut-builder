@@ -22,6 +22,8 @@ function init(p){
  for(let bi=0;bi<blocks.length;bi++){const row=p.ledger.filter(r=>r.block===bi+1).at(-1),s=track.segments.find(s=>s.id===row.segmentIds.at(-1));blocks[bi].transitions=(s.extra_material_refs||[]).map(id=>map.get(id)).filter(m=>m?.type==='transitions').map(m=>clone(m.value));}
  const used=new Set(p.ledger.filter(r=>r.block>0).flatMap(r=>r.segmentIds)),tail=track.segments.filter(s=>!used.has(s.id));
  if(tail.length>1||tail.some(s=>end(s)!==p.draft.duration))throw Error('Có đoạn ngoài Hook/Body chưa ánh xạ được an toàn.');
+ // Exported sources are initialized read-only; stable slot IDs survive reopening the picker.
+ if(p.installed)blocks.forEach((b,bi)=>b.units.forEach((u,ci)=>{u.id=crypto.createHash('sha256').update(JSON.stringify([p.id,bi,ci,u.segments.map(s=>s.id)])).digest('hex');}));
  p.editor={version:1,revision:0,blocks,ending:tail.length?pack(p.draft,tail,null):null};return p.editor;
 }
 function audioMode(u,s){if(s.volume===0)return 'mute';const m=(u.materials.vocal_separations||[]).find(m=>s.extra_material_refs?.includes(m.id));return m?.choice===1?'removeVocals':m?.choice===2?'keepVocals':'original';}
@@ -94,18 +96,18 @@ function peerChoices(store,b,p,unitId,includeBlocked=false){
  const bi=p.editor.blocks.indexOf(at.b),used=new Set([...p.editor.blocks.flatMap(bl=>bl.units.filter(u=>!u.empty).map(u=>u.fingerprint)),p.editor.ending?.fingerprint].filter(Boolean)),blocked=require('./blacklist.cjs').matcher(store);
  const result=[];
  for(const peer of b.projects){
-  if(peer.id===p.id||peer.installed||peer.locked)continue;
+  if(peer.id===p.id||(!at.b.hook&&peer.installed)||(peer.locked&&!peer.installed))continue;
   const e=init(peer),bl=e.blocks[bi];if(!bl)continue;
   for(const [slot,u] of bl.units.entries()){
-   if(u.empty||used.has(u.fingerprint)||(!includeBlocked&&blocked(u)))continue;
-   if(!at.u.empty&&(e.ending?.fingerprint===at.u.fingerprint||e.blocks.some(x=>x.units.some(v=>v.id!==u.id&&!v.empty&&v.fingerprint===at.u.fingerprint))))continue;
-   result.push({...summary(u),copyrightBlocked:blocked(u)?.name||'',unitId:u.id,peerId:peer.id,peerRevision:e.revision,sourceName:peer.name,block:bi,slot});
+   if(u.empty||(!at.b.hook&&used.has(u.fingerprint))||(!includeBlocked&&blocked(u)))continue;
+   if(!at.b.hook&&!at.u.empty&&(e.ending?.fingerprint===at.u.fingerprint||e.blocks.some(x=>x.units.some(v=>v.id!==u.id&&!v.empty&&v.fingerprint===at.u.fingerprint))))continue;
+   result.push({...summary(u),copyOnly:!!(at.b.hook&&peer.installed),copyrightBlocked:blocked(u)?.name||'',unitId:u.id,peerId:peer.id,peerRevision:e.revision,sourceName:peer.name,block:bi,slot});
   }
  }
  return result;
 }
 function swapCandidates(store,id,projectId,unitId){const {b,p,changed}=load(store,id,projectId),uninitialized=b.projects.filter(x=>!x.editor),rows=peerChoices(store,b,p,unitId,true);
- const initialized=uninitialized.filter(x=>x.editor);if(changed)initialized.push(p);if(initialized.length)require('./remix-storage.cjs').saveProjects(store,b.id,initialized,b.updated);
+ const initialized=uninitialized.filter(x=>x.editor&&!x.installed);if(changed)initialized.push(p);if(initialized.length)require('./remix-storage.cjs').saveProjects(store,b.id,initialized,b.updated);
  // Historical display marker is independent of eligibility/reopened export reservations.
  const exported=exportedFootage.locations(store,b.channelId);
  return rows.map(c=>({...c,exportedBefore:exported.has(c.fingerprint),exportedProjects:exported.get(c.fingerprint)||[]}));}
@@ -115,6 +117,12 @@ function swapPeer(store,args){
  const c=peerChoices(store,{...b,projects:b.projects.filter(x=>x.id===args.peerId)},p,args.unitId).find(c=>c.peerId===args.peerId&&c.unitId===args.otherId);
  if(!c||c.peerRevision!==args.peerRevision)throw Error('Clip hoặc video đã thay đổi. Hãy mở lại danh sách.');
  const peer=b.projects.find(x=>x.id===c.peerId),a=locate(p.editor,args.unitId),z=locate(peer.editor,c.unitId),pair=uid();
+ if(c.copyOnly){
+  (p.editUndo??=[]).push({editor:clone(p.editor),name:p.name,assignments:clone(p.assignments),settings:clone(p.settings)});p.editUndo=p.editUndo.slice(-5);
+  a.b.units[a.i]={...clone(z.u),id:uid()};
+  const songs=clone(p.assignments);p.editor.revision++;rebuild(p);p.assignments=require('./remix-timing.cjs').assignments({...p,assignments:songs},p.settings||{});p.editedAt=new Date().toISOString();
+  require('./remix-storage.cjs').saveProjects(store,b.id,[p],b.updated);return present(p,b,store);
+ }
  for(const [x,y] of [[p,peer],[peer,p]]){
   (x.editUndo??=[]).push({editor:clone(x.editor),name:x.name,assignments:clone(x.assignments),settings:clone(x.settings),peerId:y.id,pair});x.editUndo=x.editUndo.slice(-5);
  }
