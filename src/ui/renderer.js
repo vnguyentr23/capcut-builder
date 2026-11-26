@@ -453,7 +453,7 @@ function expandLibrary(on){if(on)expandBody(false);document.body.classList.toggl
 $('#expandLibrary').onclick=()=>expandLibrary(!document.body.classList.contains('libraryExpanded'));
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.querySelector('dialog[open]')&&document.body.classList.contains('libraryExpanded')){e.preventDefault();expandLibrary(false);$('#expandLibrary').focus();}});
 
-function expandBody(on){document.body.classList.toggle('bodyExpanded',on);const button=$('#expandBody');button.textContent=on?'⛶ Thu gọn':'⛶ Mở rộng';button.setAttribute('aria-expanded',String(on));if(on){expandLibrary(false);toggleSettings(false);}}
+function expandBody(on){const ending=$('.endPanel');if(on)$('#bodyPanel').querySelector('.sectionHead').after(ending);else $('.auxiliaryColumn').append(ending);document.body.classList.toggle('bodyExpanded',on);const button=$('#expandBody');button.textContent=on?'⛶ Thu gọn':'⛶ Mở rộng';button.setAttribute('aria-expanded',String(on));if(on){expandLibrary(false);toggleSettings(false);}}
 $('#expandBody').onclick=()=>expandBody(!document.body.classList.contains('bodyExpanded'));
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.querySelector('dialog[open]')&&document.body.classList.contains('bodyExpanded')){e.preventDefault();expandBody(false);$('#expandBody').focus();}});
 for(const id of ['showEditor','showRemix','toggleBody'])$('#'+id).addEventListener('click',()=>expandBody(false));
