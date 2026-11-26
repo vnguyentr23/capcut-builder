@@ -228,11 +228,20 @@ function renderBody(){
   if(d.end){
     const end=d.end;media.set(end.id,end);
     const el=document.createElement('section');el.className='builderBlock builderEnding';
-    el.innerHTML=`<div class="sectionHead"><h3>Kết thúc · cùng block cuối</h3><small class="blockTime">${fmt(end.duration||0)}</small><button data-change-end>Đổi video / ảnh</button></div><div class="builderCards"><article class="bodyCard"><div class="footageThumb" data-preview="${esc(end.id)}"><img data-thumb="${esc(end.id)}" alt="Ảnh xem trước kết thúc" ${thumbCache.has(end.id)?'src="'+thumbCache.get(end.id)+'"':''}>${end.kind==='image'?'': '<button class="thumbPlay" title="Phát kết thúc">▶</button>'}<span class="thumbDuration">${fmt(end.duration||0)}</span></div><span class="mediaTitle">${esc(end.name||shortPath(end.path))}</span><div class="builderRail"><button data-remove-end title="Bỏ kết thúc" aria-label="Bỏ kết thúc">×</button></div></article></div>`;
+    el.innerHTML=`<div class="sectionHead"><h3>Kết thúc</h3><small class="blockTime">${fmt(end.duration||0)}</small><button data-change-end>Đổi video / ảnh</button></div><div class="builderCards"><article class="bodyCard"><div class="footageThumb" data-preview="${esc(end.id)}"><img data-thumb="${esc(end.id)}" alt="Ảnh xem trước kết thúc" ${thumbCache.has(end.id)?'src="'+thumbCache.get(end.id)+'"':''}>${end.kind==='image'?'': '<button class="thumbPlay" title="Phát kết thúc">▶</button>'}<span class="thumbDuration">${fmt(end.duration||0)}</span></div><span class="mediaTitle">${esc(end.name||shortPath(end.path))}</span><div class="builderRail"><button data-remove-end title="Bỏ kết thúc" aria-label="Bỏ kết thúc">×</button></div></article></div>`;
     host.append(el);const img=el.querySelector('img');if(!img.getAttribute('src'))thumbObserver.observe(img);
     const play=el.querySelector('.thumbPlay');if(play)play.onclick=()=>showFootage(end.id,el.querySelector('.footageThumb'));
     el.querySelector('[data-change-end]').onclick=()=>$('#pickEnd').click();
-    el.querySelector('[data-remove-end]').onclick=()=>{state.draft.end=null;changed();render();};
+    el.querySelector('[data-remove-end]').onclick=()=>$('#clearEnd').click();
+    if(end.kind==='image'){
+      const label=document.createElement('label');label.className='endingDuration';label.innerHTML='Thời lượng ảnh (giây) <input type="number" min="0.1" max="3600" step="0.1" aria-label="Thời lượng ảnh kết thúc">';
+      const input=label.querySelector('input');input.value=end.duration||5;
+      input.onchange=()=>{if(!input.checkValidity())return;$('#endDuration').value=input.value;$('#endDuration').dispatchEvent(new Event('input'));updateSummary();};el.append(label);
+    }
+  }else{
+    const el=document.createElement('section');el.className='builderBlock builderEnding';
+    el.innerHTML='<div class="sectionHead"><h3>Kết thúc</h3></div><button class="endingAdd" type="button">＋ Thêm thumbnail / video kết thúc</button>';
+    el.querySelector('button').onclick=()=>$('#pickEnd').click();host.append(el);
   }
 
 }
@@ -453,7 +462,7 @@ function expandLibrary(on){if(on)expandBody(false);document.body.classList.toggl
 $('#expandLibrary').onclick=()=>expandLibrary(!document.body.classList.contains('libraryExpanded'));
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.querySelector('dialog[open]')&&document.body.classList.contains('libraryExpanded')){e.preventDefault();expandLibrary(false);$('#expandLibrary').focus();}});
 
-function expandBody(on){const ending=$('.endPanel');if(on)$('#bodyPanel').querySelector('.sectionHead').after(ending);else $('.auxiliaryColumn').append(ending);document.body.classList.toggle('bodyExpanded',on);const button=$('#expandBody');button.textContent=on?'⛶ Thu gọn':'⛶ Mở rộng';button.setAttribute('aria-expanded',String(on));if(on){expandLibrary(false);toggleSettings(false);}}
+function expandBody(on){document.body.classList.toggle('bodyExpanded',on);const button=$('#expandBody');button.textContent=on?'⛶ Thu gọn':'⛶ Mở rộng';button.setAttribute('aria-expanded',String(on));if(on){expandLibrary(false);toggleSettings(false);}}
 $('#expandBody').onclick=()=>expandBody(!document.body.classList.contains('bodyExpanded'));
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.querySelector('dialog[open]')&&document.body.classList.contains('bodyExpanded')){e.preventDefault();expandBody(false);$('#expandBody').focus();}});
 for(const id of ['showEditor','showRemix','toggleBody'])$('#'+id).addEventListener('click',()=>expandBody(false));
