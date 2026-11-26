@@ -52,7 +52,7 @@ function selectBody(draft,groups,media,used,{repair=false,partial=false}={}){
   const blocked=new Set([...excluded,...draft.hook.filter(h=>!h.allowBody).map(h=>media.get(h.id)?.fingerprint),draft.intro?.fingerprint,draft.end?.fingerprint]);
   const selected=new Set(),counts=new Map(groups.map(g=>[g.id,0])),result=new Array(draft.target),preferred=new Array(draft.target);
   const eligible=(m,g)=>m?.duration>0&&(!g?.lockedOnly||(g.pinned||[]).includes(m.id))&&m.width>0&&m.height>0&&!m.error&&!used.has(m.fingerprint)&&!blocked.has(m.fingerprint)&&!selected.has(m.fingerprint);
-  const place=(m,g,i)=>{selected.add(m.fingerprint);counts.set(g.id,counts.get(g.id)+1);result[i]={id:m.id,groupId:g.id,requestedGroupId:preferred[i]?.id||draft.pattern[i%draft.pattern.length],slotIndex:i};};
+  const place=(m,g,i)=>{selected.add(m.fingerprint);counts.set(g.id,counts.get(g.id)+1);result[i]={id:m.id,groupId:g.id,requestedGroupId:preferred[i]?.id||draft.pattern[i%draft.pattern.length],slotIndex:i};const previous=oldSlots.get(i);if(repair&&previous){result[i].requestedGroupId=previous.requestedGroupId||previous.groupId;if(previous.priority)result[i].priority=true;}};
   const oldSlots=new Map((repair?draft.body.filter(b=>!b.supplementFor):[]).map((b,i)=>[b.slotIndex??i,b]));
   for(let i=0;i<draft.target;i++){
     const old=oldSlots.get(i),g=groupMap.get(old?.groupId),m=media.get(old?.id);
