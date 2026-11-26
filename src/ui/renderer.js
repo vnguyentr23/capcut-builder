@@ -67,24 +67,24 @@ function render(){
   renderHook();renderPattern();renderBody();renderMusic();renderHistory();renderLocalTransitions();renderEndEffects();updateSummary();
 }
 function renderLocalTransitions(){
-  $('#localTransitionPicker').hidden=state.draft.transition.type!=='local';
+  $('#localTransitionPicker').hidden=false;
   const q=$('#transitionSearch').value.toLocaleLowerCase('vi'),chosen=state.draft.transition.resource;
   const list=transitionCatalog.filter(r=>(r.name+' '+r.effectId).toLocaleLowerCase('vi').includes(q));
   if(chosen&&!list.some(r=>r.effectId===chosen.effectId))list.unshift(chosen);
-  $('#localTransition').innerHTML='<option value="">Chọn chuyển cảnh đã tải…</option>'+list.map(r=>'<option value="'+esc(r.effectId)+'">'+esc(r.name)+(r.isPro?' · Pro':'')+'</option>').join('');
-  $('#localTransition').value=chosen?.effectId||'';
+  $('#localTransition').innerHTML='<option value="">Không có</option>'+list.map(r=>'<option value="'+esc(r.effectId)+'">'+esc(r.name)+(r.isPro?' · Pro':'')+'</option>').join('');
+  $('#localTransition').value=state.draft.transition.type==='local'?(chosen?.effectId||''):'';
   $('#transitionResource').textContent=chosen?chosen.name+' · Mã '+chosen.effectId+' · Áp vào project CapCut khi tạo.':'Chọn tài nguyên, sau đó chỉnh thời lượng ở trên.';
   $('#transitionScanStatus').textContent=transitionCatalog.length+' chuyển cảnh có gói tải trên máy. Quét lại sau khi tải thêm trong CapCut.';
 }
 function renderEndEffects(){
  const chosen=state.draft.endEffect.resource,q=$('#effectSearch').value.toLocaleLowerCase('vi'),list=effectCatalog.filter(r=>r.name.toLocaleLowerCase('vi').includes(q));
  if(chosen&&!list.some(r=>r.effectId===chosen.effectId))list.unshift(chosen);
- $('#endEffectPicker').innerHTML='<option value="">Chọn hiệu ứng đã tải…</option>'+list.map(r=>`<option value="${esc(r.effectId)}">${esc(r.name)}${r.isPro?' · Pro':''}</option>`).join('');
- $('#endEffectPicker').value=chosen?.effectId||'';$('#effectStatus').textContent=effectCatalog.length+' hiệu ứng đã tải trên máy.';
+ $('#endEffectPicker').innerHTML='<option value="">Không có</option>'+list.map(r=>`<option value="${esc(r.effectId)}">${esc(r.name)}${r.isPro?' · Pro':''}</option>`).join('');
+ $('#endEffectPicker').value=state.draft.endEffect.enabled?(chosen?.effectId||''):'';$('#effectStatus').textContent=effectCatalog.length+' hiệu ứng đã tải trên máy.';
 }
 $('#scanEffects').onclick=()=>run('Đọc hiệu ứng CapCut…',async()=>{const r=await api('effects');effectCatalog=r.items;renderEndEffects();toast('Tìm thấy '+r.items.length+' hiệu ứng.'+(r.warnings.length?' '+r.warnings.join(' '):''));});
 $('#effectSearch').oninput=renderEndEffects;
-$('#endEffectPicker').onchange=e=>{const r=effectCatalog.find(r=>r.effectId===e.target.value)||null;state.draft.endEffect.resource=r;if(r){state.draft.endEffect.enabled=true;state.draft.endEffect.duration=Math.min(60,Math.max(.1,r.duration||3));}changed();render();};
+$('#endEffectPicker').onchange=e=>{const r=effectCatalog.find(r=>r.effectId===e.target.value)||null;state.draft.endEffect.resource=r;state.draft.endEffect.enabled=!!r;if(r){state.draft.endEffect.enabled=true;state.draft.endEffect.duration=Math.min(60,Math.max(.1,r.duration||3));}changed();render();};
 function renderHook(){
   $('#hook').querySelectorAll('[data-thumb]').forEach(img=>thumbObserver.unobserve(img));
   const el=$('#hook');el.innerHTML=state.draft.hook.length?state.draft.hook.map((h,i)=>{const m=media.get(h.id),old=used.has(m?.fingerprint),inBody=state.draft.body.some(b=>media.get(b.id)?.fingerprint===m?.fingerprint);return `<article class="hookCard" data-index="${i}">${thumb(h.id,m?.duration)}<button class="mediaTitle" data-watch="${esc(h.id)}" title="Xem footage">${i+1}. ${esc(m?.name||'File không còn trong thư viện')}</button><div class="hookStatus"><span class="hookStatusDot ${old?'used':'fresh'}"></span><span>${old?'Đã dùng trước đó':'Chưa dùng'}${inBody?' · Có trong Body':''}</span></div><div class="row hookActions"><label class="check hookRepeat" title="Cho phép footage này xuất hiện lại trong Body"><input type="checkbox" aria-label="Cho phép lặp ở Body" data-allow="${i}" ${h.allowBody?'checked':''}><span aria-hidden="true">↻</span></label><button data-hook-move="-1" data-index="${i}" title="Đưa Hook lên trước" ${i===0?'disabled':''}>↑</button><button data-hook-move="1" data-index="${i}" title="Đưa Hook xuống sau" ${i===state.draft.hook.length-1?'disabled':''}>↓</button><button data-remove-hook="${i}" title="Bỏ khỏi Hook">×</button></div></article>`;}).join(''):'<div class="empty">Bấm “Chọn video” hoặc ＋ Hook để thêm đoạn mở đầu</div>';
@@ -414,7 +414,7 @@ $('#pickDestination').onclick=async()=>{const p=await api('choose','folder');if(
 $('#mode').onchange=e=>{state.draft.mode=e.target.value;changed();detect();};
 $('#scanTransitions').onclick=()=>run('Đọc chuyển cảnh CapCut đã tải…',async()=>{const r=await api('transitions');transitionCatalog=r.items;renderLocalTransitions();toast('Đã tìm thấy '+r.items.length+' chuyển cảnh đã tải.'+(r.warnings.length?' '+r.warnings.join(' '):''));});
 $('#transitionSearch').oninput=renderLocalTransitions;
-$('#localTransition').onchange=e=>{state.draft.transition.resource=transitionCatalog.find(r=>r.effectId===e.target.value)||null;changed();renderLocalTransitions();};
+$('#localTransition').onchange=e=>{state.draft.transition.resource=transitionCatalog.find(r=>r.effectId===e.target.value)||null;state.draft.transition.type=state.draft.transition.resource?'local':'none';changed();renderLocalTransitions();renderBody();};
 $('#detect').onclick=()=>run('Kiểm tra CapCut…',detect);
 $('#check').onclick=()=>run('Kiểm tra dự án…',async()=>showChecks(await api('check',state)));
 $('#build').onclick=()=>run('Kiểm tra và tạo dự án…',async()=>{const r=await api('build',state);if(r.view)accept(r.view);showChecks(r.check);if(r.result)toast(r.result.kind==='capcut'?'Đã tạo dự án editable. Mở CapCut để chỉnh sửa; lịch sử footage đã được lưu.':'Đã lưu bản kế hoạch; chưa phải dự án CapCut.');});
